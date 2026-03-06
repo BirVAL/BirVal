@@ -159,20 +159,18 @@ const b=h.nextElementSibling
 b.style.display=b.style.display==="block"?"none":"block"
 }
 
-/* TRADINGVIEW */
+/* CHART */
 
 let widget
 
 function loadChart(symbol){
 
 widget=new TradingView.widget({
-
 symbol:symbol,
 interval:"60",
 container_id:"chart",
 theme:"dark",
 autosize:true
-
 })
 
 }
@@ -185,7 +183,7 @@ loadChart("BINANCE:"+symbol)
 
 loadChart("BINANCE:BTCUSDT")
 
-/* WATCHLIST */
+/* INSTITUTIONAL UNIVERSE */
 
 const coins=[
 
@@ -220,7 +218,7 @@ watchlist.appendChild(div)
 
 })
 
-/* MARKET ENGINE */
+/* MARKET DATA */
 
 let market=[]
 let fundingData=[]
@@ -240,65 +238,49 @@ const fund=await fetch(
 fundingData=await fund.json()
 
 runRadar()
-runLiquidityEngine()
-updateHeatmap()
-updateFunding()
+runLiquidity()
 
 }
 
-/* RADAR */
+/* RADAR FILTRADO */
 
 function runRadar(){
 
-let filtered=market.filter(a=>
-
-a.symbol.endsWith("USDT") &&
-Number(a.quoteVolume)>80000000
-
-)
-
-let opportunities=[]
-
-filtered.forEach(asset=>{
-
-let move=Math.abs(asset.priceChangePercent)
-let volume=Number(asset.quoteVolume)
-
-let volScore = move>3?30:move>2?20:0
-let volumeScore = volume>150000000?30:volume>100000000?20:0
-let momentumScore = move>4?30:0
-
-let score=volScore+volumeScore+momentumScore
-
-if(score>40){
-
-opportunities.push({
-
-symbol:asset.symbol,
-score:score,
-move:move
-
-})
-
-}
-
-})
-
-opportunities.sort((a,b)=>b.score-a.score)
-
 let html=""
 
-opportunities.slice(0,8).forEach(o=>{
+coins.forEach(symbol=>{
+
+let asset=market.find(a=>a.symbol===symbol)
+
+if(!asset) return
+
+let volume=Number(asset.quoteVolume)
+let move=Math.abs(asset.priceChangePercent)
+
+if(volume<120000000) return
+
+let volExp=move>2
+let momentum=move>3
+let breakout=move>4
+
+let score=0
+
+if(volExp) score+=20
+if(momentum) score+=30
+if(breakout) score+=40
+if(volume>200000000) score+=20
+
+if(score<40) return
 
 html+=`
 
 <div class="yellow">
 
-${o.symbol}
+${symbol}
 
-Score ${o.score}
+Score ${score}
 
-Move ${o.move.toFixed(2)}%
+Move ${move.toFixed(2)}%
 
 </div>
 
@@ -312,19 +294,19 @@ radar.innerHTML=html
 
 /* LIQUIDITY ENGINE */
 
-function runLiquidityEngine(){
+function runLiquidity(){
 
 let html=""
 
-market.forEach(asset=>{
+coins.forEach(symbol=>{
+
+let asset=market.find(a=>a.symbol===symbol)
+let fund=fundingData.find(f=>f.symbol===symbol)
+
+if(!asset||!fund) return
 
 let move=Math.abs(asset.priceChangePercent)
 let volume=Number(asset.quoteVolume)
-
-let fund = fundingData.find(f=>f.symbol===asset.symbol)
-
-if(!fund) return
-
 let funding=Math.abs(fund.lastFundingRate)
 
 if(move>4 && volume>150000000){
@@ -335,7 +317,7 @@ html+=`
 
 Stop Cluster Risk
 
-${asset.symbol}
+${symbol}
 
 Move ${move.toFixed(2)}%
 
@@ -353,7 +335,7 @@ html+=`
 
 Liquidation Risk
 
-${asset.symbol}
+${symbol}
 
 Funding ${(fund.lastFundingRate*100).toFixed(3)}%
 
@@ -369,60 +351,11 @@ liquidity.innerHTML=html
 
 }
 
-/* HEATMAP */
-
-function updateHeatmap(){
-
-let html=""
-
-market.slice(0,30).forEach(c=>{
-
-let color=c.priceChangePercent>0?"green":"red"
-
-html+=`<span class="${color}">${c.symbol}</span> `
-
-})
-
-heatmap.innerHTML=html
-
-}
-
-/* FUNDING */
-
-function updateFunding(){
-
-let html=""
-
-fundingData.slice(0,10).forEach(f=>{
-
-html+=`
-
-<div>
-
-${f.symbol}
-
-${(f.lastFundingRate*100).toFixed(3)}%
-
-</div>
-
-`
-
-})
-
-funding.innerHTML=html
-
-}
-
 /* LOOPS */
 
 loadMarket()
 
 setInterval(loadMarket,30000)
-
-</script>
-
-</body>
-</html>
 
 </script>
 

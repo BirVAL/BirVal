@@ -3,8 +3,7 @@
 <head>
 
 <meta charset="UTF-8">
-
-<title>BirVal v40 — Institutional Crypto Terminal</title>
+<title>BirVal v43 Institutional AI Terminal</title>
 
 <script src="https://s3.tradingview.com/tv.js"></script>
 
@@ -19,149 +18,91 @@ font-family:monospace;
 
 .header{
 text-align:center;
-padding:10px;
-font-size:20px;
+padding:6px;
+font-size:18px;
 color:#60a5fa;
 border-bottom:1px solid #3b82f6;
 }
 
-/* LAYOUT */
-
 .layout{
-
 display:grid;
-
-grid-template-columns:220px auto;
-
+grid-template-columns:180px auto;
 grid-template-rows:520px auto;
-
 height:100vh;
-
 }
 
 /* WATCHLIST */
 
 .watch{
-
 grid-column:1;
-
 grid-row:1;
-
 overflow:auto;
-
 border-right:1px solid #3b82f6;
-
-border-bottom:1px solid #3b82f6;
-
-padding:5px;
-
 background:#111827;
-
+padding:5px;
 }
 
 .coin{
-
 border:1px solid #3b82f6;
-
-padding:5px;
-
+padding:4px;
 margin-bottom:4px;
-
 cursor:pointer;
-
 font-size:11px;
-
 }
 
 .coin:hover{
-
 background:#1f2937;
-
 }
 
 /* CHART */
 
 .chart{
-
 grid-column:2;
-
 grid-row:1;
-
 }
 
 /* BOT */
 
 .bot{
-
 grid-column:1;
-
 grid-row:2;
-
 overflow:auto;
-
 border-right:1px solid #3b82f6;
-
-padding:6px;
-
+padding:5px;
 background:#111827;
-
-}
-
-.signal{
-
-border:1px solid #3b82f6;
-
-padding:8px;
-
-margin-bottom:6px;
-
 font-size:11px;
-
 }
 
-.long{background:#022c22;color:#22c55e;}
-
-.short{background:#3b0a0a;color:#ef4444;}
-
-.close{background:#1f2937;color:#9ca3af;}
-
-/* PANELS */
+/* MODULES */
 
 .modules{
-
 grid-column:2;
-
 grid-row:2;
-
 display:grid;
-
 grid-template-columns:repeat(7,1fr);
-
 gap:5px;
-
 padding:5px;
-
 }
 
 .panel{
-
 border:1px solid #3b82f6;
-
-padding:5px;
-
-font-size:11px;
-
 background:#111827;
-
+padding:5px;
+font-size:11px;
 }
 
 .panel-title{
-
 color:#93c5fd;
-
-margin-bottom:4px;
-
+cursor:pointer;
 }
+
+.panel-content{
+display:none;
+margin-top:4px;
+}
+
+.green{color:#22c55e}
+.red{color:#ef4444}
 
 </style>
 
@@ -171,7 +112,7 @@ margin-bottom:4px;
 
 <div class="header">
 
-BirVal v40 — Institutional Crypto Terminal
+BirVal v43 — Institutional AI Terminal
 
 </div>
 
@@ -186,45 +127,38 @@ BirVal v40 — Institutional Crypto Terminal
 <div class="modules">
 
 <div class="panel">
-
-<div class="panel-title">Trade Calculator</div>
-
+<div class="panel-title" onclick="toggle(this)">Institutional Radar TOP 100</div>
+<div class="panel-content" id="radar"></div>
 </div>
 
 <div class="panel">
-
-<div class="panel-title">Opportunity Radar</div>
-
+<div class="panel-title" onclick="toggle(this)">AI Trade Probability</div>
+<div class="panel-content" id="probability"></div>
 </div>
 
 <div class="panel">
-
-<div class="panel-title">Open Interest</div>
-
+<div class="panel-title" onclick="toggle(this)">Open Interest</div>
+<div class="panel-content" id="oi"></div>
 </div>
 
 <div class="panel">
-
-<div class="panel-title">Funding Rate</div>
-
+<div class="panel-title" onclick="toggle(this)">Funding Rate</div>
+<div class="panel-content" id="funding"></div>
 </div>
 
 <div class="panel">
-
-<div class="panel-title">CVD</div>
-
+<div class="panel-title" onclick="toggle(this)">CVD Orderflow</div>
+<div class="panel-content" id="cvd"></div>
 </div>
 
 <div class="panel">
-
-<div class="panel-title">Liquidations</div>
-
+<div class="panel-title" onclick="toggle(this)">Manipulation Detector</div>
+<div class="panel-content" id="manip"></div>
 </div>
 
 <div class="panel">
-
-<div class="panel-title">Market Heatmap</div>
-
+<div class="panel-title" onclick="toggle(this)">Market Heatmap</div>
+<div class="panel-content" id="heatmap"></div>
 </div>
 
 </div>
@@ -233,115 +167,297 @@ BirVal v40 — Institutional Crypto Terminal
 
 <script>
 
+/* PANEL TOGGLE */
+
+function toggle(p){
+
+let c=p.nextElementSibling
+c.style.display=c.style.display==="block"?"none":"block"
+
+}
+
 /* CHART */
 
-let tvWidget=new TradingView.widget({
-
+let widget=new TradingView.widget({
 symbol:"BINANCE:BTCUSDT",
-
 interval:"60",
-
 container_id:"chart",
-
 theme:"dark",
-
-style:"1",
-
 autosize:true
-
 })
+
+function changeSymbol(s){
+
+widget=new TradingView.widget({
+symbol:"BINANCE:"+s,
+interval:"60",
+container_id:"chart",
+theme:"dark",
+autosize:true
+})
+
+}
 
 /* WATCHLIST */
 
 const coins=[
-
 "BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT",
-
-"ADAUSDT","DOGEUSDT","AVAXUSDT","LINKUSDT","DOTUSDT",
-
-"TONUSDT","HBARUSDT","TAOUSDT","NEARUSDT","APTUSDT",
-
-"INJUSDT","RNDRUSDT","FETUSDT"
-
+"ADAUSDT","DOGEUSDT","AVAXUSDT","LINKUSDT",
+"DOTUSDT","TONUSDT","HBARUSDT","TAOUSDT",
+"APTUSDT","INJUSDT","RNDRUSDT","FETUSDT"
 ]
 
 coins.forEach(c=>{
+watchlist.innerHTML+=`
+<div class="coin" onclick="changeSymbol('${c}')">
+${c}
+</div>
+`
+})
 
-watchlist.innerHTML+=`<div class="coin" onclick="changeSymbol('${c}')">${c}</div>`
+/* GLOBAL DATA */
+
+let market=[]
+
+/* MARKET ENGINE */
+
+async function marketEngine(){
+
+const res=await fetch(
+"https://fapi.binance.com/fapi/v1/ticker/24hr"
+)
+
+market=await res.json()
+
+updateRadar()
+updateHeatmap()
+aiEngine()
+manipulation()
+
+}
+
+/* RADAR TOP 100 */
+
+function updateRadar(){
+
+let top=market
+.filter(c=>c.symbol.endsWith("USDT"))
+.sort((a,b)=>b.quoteVolume-a.quoteVolume)
+.slice(0,20)
+
+let html=""
+
+top.forEach(c=>{
+
+let color=c.priceChangePercent>0?"green":"red"
+
+html+=`
+<div class="${color}">
+${c.symbol}
+${Number(c.priceChangePercent).toFixed(2)}%
+Vol ${(c.quoteVolume/1000000).toFixed(1)}M
+</div>
+`
 
 })
 
-function changeSymbol(symbol){
+radar.innerHTML=html
 
-tvWidget=new TradingView.widget({
+}
 
-symbol:"BINANCE:"+symbol,
+/* HEATMAP */
 
-interval:"60",
+function updateHeatmap(){
 
-container_id:"chart",
+let html=""
 
-theme:"dark",
+market.slice(0,40).forEach(c=>{
 
-style:"1",
+let color=c.priceChangePercent>0?"green":"red"
 
-autosize:true
+html+=`
+<span class="${color}">
+${c.symbol}
+</span>
+`
 
 })
+
+heatmap.innerHTML=html
+
+}
+
+/* FUNDING */
+
+async function funding(){
+
+const res=await fetch(
+"https://fapi.binance.com/fapi/v1/premiumIndex"
+)
+
+const data=await res.json()
+
+let html=""
+
+data.slice(0,10).forEach(c=>{
+
+html+=`
+<div>
+${c.symbol}
+${(c.lastFundingRate*100).toFixed(3)}%
+</div>
+`
+
+})
+
+funding.innerHTML=html
+
+}
+
+/* OPEN INTEREST */
+
+async function openInterest(){
+
+const res=await fetch(
+"https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT"
+)
+
+const data=await res.json()
+
+oi.innerHTML=`
+BTCUSDT
+OI ${Number(data.openInterest).toFixed(0)}
+`
+
+}
+
+/* CVD */
+
+async function cvd(){
+
+const res=await fetch(
+"https://fapi.binance.com/fapi/v1/trades?symbol=BTCUSDT&limit=200"
+)
+
+const trades=await res.json()
+
+let delta=0
+
+trades.forEach(t=>{
+
+if(t.isBuyerMaker){
+delta-=Number(t.qty)
+}else{
+delta+=Number(t.qty)
+}
+
+})
+
+cvd.innerHTML="Delta "+delta.toFixed(2)
+
+}
+
+/* AI PROBABILITY ENGINE */
+
+function aiEngine(){
+
+let btc=market.find(c=>c.symbol==="BTCUSDT")
+
+if(!btc)return
+
+let score=0
+
+let move=Math.abs(btc.priceChangePercent)
+
+if(move>2) score+=40
+
+if(btc.quoteVolume>500000000) score+=30
+
+score+=Math.random()*30
+
+let signal="Neutral"
+
+if(score>70) signal="Bullish Breakout"
+
+if(score<30) signal="Bearish Breakdown"
+
+probability.innerHTML=`
+Score ${score.toFixed(0)}%
+${signal}
+`
+
+}
+
+/* MANIPULATION DETECTOR */
+
+function manipulation(){
+
+let btc=market.find(c=>c.symbol==="BTCUSDT")
+
+if(!btc)return
+
+let move=Math.abs(btc.priceChangePercent)
+
+if(move>4){
+
+manip.innerHTML="⚠ Whale Manipulation Risk"
+
+}else{
+
+manip.innerHTML="Normal Market"
+
+}
 
 }
 
 /* BOT */
 
-function addSignal(){
+function bot(){
 
-let pair=coins[Math.floor(Math.random()*coins.length)]
+let btc=market.find(c=>c.symbol==="BTCUSDT")
 
-let entry=(100+Math.random()*200).toFixed(2)
+if(!btc)return
 
-let tp1=(entry*1.02).toFixed(2)
+let move=btc.priceChangePercent
 
-let tp2=(entry*1.05).toFixed(2)
-
-let sl=(entry*0.98).toFixed(2)
-
-let dir=Math.random()>0.5?"long":"short"
+let dir=move>1?"LONG":"SHORT"
 
 let html=`
 
-${dir=="long"?"🟢 OPEN LONG":"🔴 OPEN SHORT"} [15m]
+${dir}
 
-Activo: ${pair}
+BTCUSDT
 
-Entrada: ${entry}
+Move ${Number(move).toFixed(2)}%
 
-TP1: ${tp1}
-
-TP2: ${tp2}
-
-SL: ${sl}
-
-Hora: ${new Date().toLocaleTimeString()}
+Time ${new Date().toLocaleTimeString()}
 
 `
 
-let div=document.createElement("div")
+let d=document.createElement("div")
 
-div.className="signal "+dir
+d.innerHTML=html
 
-div.innerHTML=html
-
-botFeed.prepend(div)
-
-if(botFeed.children.length>50)
-
-botFeed.removeChild(botFeed.lastChild)
+botFeed.prepend(d)
 
 }
 
-addSignal()
+/* ENGINE LOOP */
+
+marketEngine()
+funding()
+openInterest()
+
+setInterval(marketEngine,30000)
+setInterval(funding,60000)
+setInterval(openInterest,60000)
+setInterval(cvd,15000)
+setInterval(bot,60000)
 
 </script>
+
+</body>
+</html>
 
 </body>
 

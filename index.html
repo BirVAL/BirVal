@@ -206,38 +206,59 @@ SL % <input id="sl">
 
 <script>
 
-/* PANEL TOGGLE */
+/* PANEL */
 
 function togglePanel(header){
 
-const body=header.nextElementSibling
+const body = header.nextElementSibling
 
-body.style.display=
+body.style.display =
 body.style.display==="block"?"none":"block"
 
 }
 
-/* TRADINGVIEW */
+/* TRADINGVIEW CHART */
 
-let widget=new TradingView.widget({
-symbol:"BINANCE:BTCUSDT",
+let widget
+
+function loadChart(symbol){
+
+widget = new TradingView.widget({
+
+symbol:symbol,
 interval:"60",
 container_id:"chart",
 theme:"dark",
 autosize:true
-})
 
-function changeSymbol(symbol){
-
-widget=new TradingView.widget({
-symbol:"BINANCE:"+symbol,
-interval:"60",
-container_id:"chart",
-theme:"dark",
-autosize:true
 })
 
 }
+
+/* SMART SYMBOL RESOLUTION */
+
+function changeSymbol(symbol){
+
+const trySymbols=[
+
+"BINANCE:"+symbol+".P",
+"BINANCE:"+symbol,
+"BINANCE:"+symbol
+
+]
+
+for(let s of trySymbols){
+
+loadChart(s)
+break
+
+}
+
+}
+
+/* DEFAULT CHART */
+
+loadChart("BINANCE:BTCUSDT")
 
 /* WATCHLIST */
 
@@ -248,36 +269,36 @@ const coins=[
 "BNBUSDT",
 "SOLUSDT",
 "XRPUSDT",
+
 "DOGEUSDT",
-"AVAXUSDT",
-
-"TAOUSDT",
-"HBARUSDT",
-"APTUSDT",
-"ARBUSDT",
 "TONUSDT",
-"INJUSDT",
-"AAVEUSDT",
+"AVAXUSDT",
 "LINKUSDT",
-"SUIUSDT",
-"NEARUSDT",
+"TRXUSDT",
 
-"RNDRUSDT",
-"FETUSDT",
-"SEIUSDT",
-"OPUSDT"
+"NEARUSDT",
+"APTUSDT",
+"INJUSDT",
+"OPUSDT",
+"ARBUSDT",
+
+"SUIUSDT",
+"AAVEUSDT",
+"HBARUSDT",
+"TAOUSDT",
+"FETUSDT"
 
 ]
 
-coins.forEach(c=>{
+coins.forEach(symbol=>{
 
 let div=document.createElement("div")
 
 div.className="coin"
 
-div.innerText=c
+div.innerText=symbol
 
-div.onclick=()=>changeSymbol(c)
+div.onclick=()=>changeSymbol(symbol)
 
 watchlist.appendChild(div)
 
@@ -288,30 +309,27 @@ watchlist.appendChild(div)
 function calc(){
 
 let entry=Number(entry.value)
-
 let lev=Number(lev.value)
-
 let sl=Number(sl.value)
 
 let liq=entry-(entry/lev)
 
-calcResult.innerHTML=`
+calcResult.innerHTML=
 
-Liquidation ${liq.toFixed(2)}
-
-StopLoss ${(entry*(1-sl/100)).toFixed(2)}
-
-`
+"Liquidation "+liq.toFixed(2)+"<br>"+
+"StopLoss "+(entry*(1-sl/100)).toFixed(2)
 
 }
 
-/* MARKET DATA */
+/* MARKET ENGINE */
 
 let market=[]
 
 async function marketEngine(){
 
-const res=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
+const res=await fetch(
+"https://fapi.binance.com/fapi/v1/ticker/24hr"
+)
 
 market=await res.json()
 
@@ -335,9 +353,12 @@ top.forEach(c=>{
 
 let color=c.priceChangePercent>0?"green":"red"
 
-html+=`<div class="${color}">
-${c.symbol} ${Number(c.priceChangePercent).toFixed(2)}%
-</div>`
+html+=
+
+"<div class='"+color+"'>"+
+c.symbol+" "+
+Number(c.priceChangePercent).toFixed(2)+"%"+
+"</div>"
 
 })
 
@@ -355,7 +376,11 @@ market.slice(0,30).forEach(c=>{
 
 let color=c.priceChangePercent>0?"green":"red"
 
-html+=`<span class="${color}">${c.symbol}</span> `
+html+=
+
+"<span class='"+color+"'>"+
+c.symbol+
+"</span> "
 
 })
 
@@ -373,17 +398,12 @@ if(!btc)return
 
 let dir=btc.priceChangePercent>1?"LONG":"SHORT"
 
-let html=`
+let html=
 
-${dir}
-
-BTCUSDT
-
-${btc.priceChangePercent.toFixed(2)}%
-
-${new Date().toLocaleTimeString()}
-
-`
+dir+"<br>"+
+"BTCUSDT<br>"+
+btc.priceChangePercent.toFixed(2)+"%<br>"+
+new Date().toLocaleTimeString()
 
 let d=document.createElement("div")
 

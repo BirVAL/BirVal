@@ -31,7 +31,7 @@ border-bottom:1px solid #60a5fa;
 
 .layout{
 display:grid;
-grid-template-columns:180px auto;
+grid-template-columns:200px auto;
 grid-template-rows:520px auto;
 height:100vh;
 }
@@ -89,7 +89,7 @@ gap:5px;
 padding:5px;
 }
 
-/* PANEL */
+/* PANELS */
 
 .panel{
 border:1px solid #60a5fa;
@@ -119,7 +119,7 @@ font-size:11px;
 .red{color:#ef4444}
 
 input{
-width:80px;
+width:70px;
 margin:2px;
 background:#111827;
 border:1px solid #60a5fa;
@@ -160,8 +160,9 @@ BirVal v43 Institutional Terminal
 <div class="panel-body">
 
 Entry <input id="entry">
-Leverage <input id="lev">
+Lev <input id="lev">
 SL % <input id="sl">
+
 <button onclick="calc()">Calc</button>
 
 <div id="calcResult"></div>
@@ -207,11 +208,12 @@ SL % <input id="sl">
 
 /* PANEL TOGGLE */
 
-function togglePanel(h){
+function togglePanel(header){
 
-let b=h.nextElementSibling
+const body=header.nextElementSibling
 
-b.style.display=b.style.display==="block"?"none":"block"
+body.style.display=
+body.style.display==="block"?"none":"block"
 
 }
 
@@ -225,10 +227,10 @@ theme:"dark",
 autosize:true
 })
 
-function changeSymbol(s){
+function changeSymbol(symbol){
 
 widget=new TradingView.widget({
-symbol:"BINANCE:"+s,
+symbol:"BINANCE:"+symbol,
 interval:"60",
 container_id:"chart",
 theme:"dark",
@@ -239,23 +241,57 @@ autosize:true
 
 /* WATCHLIST */
 
-const coins=["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT"]
+const coins=[
+
+"BTCUSDT",
+"ETHUSDT",
+"BNBUSDT",
+"SOLUSDT",
+"XRPUSDT",
+"DOGEUSDT",
+"AVAXUSDT",
+
+"TAOUSDT",
+"HBARUSDT",
+"APTUSDT",
+"ARBUSDT",
+"TONUSDT",
+"INJUSDT",
+"AAVEUSDT",
+"LINKUSDT",
+"SUIUSDT",
+"NEARUSDT",
+
+"RNDRUSDT",
+"FETUSDT",
+"SEIUSDT",
+"OPUSDT"
+
+]
 
 coins.forEach(c=>{
-watchlist.innerHTML+=`
-<div class="coin" onclick="changeSymbol('${c}')">${c}</div>
-`
+
+let div=document.createElement("div")
+
+div.className="coin"
+
+div.innerText=c
+
+div.onclick=()=>changeSymbol(c)
+
+watchlist.appendChild(div)
+
 })
 
 /* CALCULATOR */
 
 function calc(){
 
-let entry=Number(document.getElementById("entry").value)
+let entry=Number(entry.value)
 
-let lev=Number(document.getElementById("lev").value)
+let lev=Number(lev.value)
 
-let sl=Number(document.getElementById("sl").value)
+let sl=Number(sl.value)
 
 let liq=entry-(entry/lev)
 
@@ -263,13 +299,13 @@ calcResult.innerHTML=`
 
 Liquidation ${liq.toFixed(2)}
 
-Stop Loss ${(entry*(1-sl/100)).toFixed(2)}
+StopLoss ${(entry*(1-sl/100)).toFixed(2)}
 
 `
 
 }
 
-/* MARKET ENGINE */
+/* MARKET DATA */
 
 let market=[]
 
@@ -299,7 +335,9 @@ top.forEach(c=>{
 
 let color=c.priceChangePercent>0?"green":"red"
 
-html+=`<div class="${color}">${c.symbol} ${c.priceChangePercent}%</div>`
+html+=`<div class="${color}">
+${c.symbol} ${Number(c.priceChangePercent).toFixed(2)}%
+</div>`
 
 })
 
@@ -336,10 +374,15 @@ if(!btc)return
 let dir=btc.priceChangePercent>1?"LONG":"SHORT"
 
 let html=`
+
 ${dir}
+
 BTCUSDT
+
 ${btc.priceChangePercent.toFixed(2)}%
+
 ${new Date().toLocaleTimeString()}
+
 `
 
 let d=document.createElement("div")

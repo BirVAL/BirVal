@@ -4,7 +4,7 @@
 <head>
 
 <meta charset="UTF-8">
-<title>BirVal v43 Institutional AI Terminal</title>
+<title>BirVal v43 Institutional Terminal</title>
 
 <script src="https://s3.tradingview.com/tv.js"></script>
 
@@ -73,8 +73,8 @@ grid-column:1;
 grid-row:2;
 overflow:auto;
 border-right:1px solid #60a5fa;
-padding:5px;
 background:#0f1629;
+padding:5px;
 font-size:11px;
 }
 
@@ -118,6 +118,21 @@ font-size:11px;
 .green{color:#22c55e}
 .red{color:#ef4444}
 
+input{
+width:80px;
+margin:2px;
+background:#111827;
+border:1px solid #60a5fa;
+color:white;
+}
+
+button{
+background:#60a5fa;
+border:none;
+padding:4px;
+cursor:pointer;
+}
+
 </style>
 
 </head>
@@ -126,7 +141,7 @@ font-size:11px;
 
 <div class="header">
 
-BirVal v43 Institutional AI Terminal
+BirVal v43 Institutional Terminal
 
 </div>
 
@@ -142,7 +157,16 @@ BirVal v43 Institutional AI Terminal
 
 <div class="panel">
 <div class="panel-header" onclick="togglePanel(this)">Trade Calculator</div>
-<div class="panel-body" id="calculator"></div>
+<div class="panel-body">
+
+Entry <input id="entry">
+Leverage <input id="lev">
+SL % <input id="sl">
+<button onclick="calc()">Calc</button>
+
+<div id="calcResult"></div>
+
+</div>
 </div>
 
 <div class="panel">
@@ -183,12 +207,11 @@ BirVal v43 Institutional AI Terminal
 
 /* PANEL TOGGLE */
 
-function togglePanel(header){
+function togglePanel(h){
 
-const body = header.nextElementSibling
+let b=h.nextElementSibling
 
-body.style.display =
-body.style.display==="block"?"none":"block"
+b.style.display=b.style.display==="block"?"none":"block"
 
 }
 
@@ -216,12 +239,7 @@ autosize:true
 
 /* WATCHLIST */
 
-const coins=[
-"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT",
-"XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT",
-"LINKUSDT","DOTUSDT","TONUSDT","HBARUSDT",
-"TAOUSDT","APTUSDT","INJUSDT","RNDRUSDT"
-]
+const coins=["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT"]
 
 coins.forEach(c=>{
 watchlist.innerHTML+=`
@@ -229,24 +247,40 @@ watchlist.innerHTML+=`
 `
 })
 
-/* GLOBAL MARKET */
+/* CALCULATOR */
 
-let market=[]
+function calc(){
+
+let entry=Number(document.getElementById("entry").value)
+
+let lev=Number(document.getElementById("lev").value)
+
+let sl=Number(document.getElementById("sl").value)
+
+let liq=entry-(entry/lev)
+
+calcResult.innerHTML=`
+
+Liquidation ${liq.toFixed(2)}
+
+Stop Loss ${(entry*(1-sl/100)).toFixed(2)}
+
+`
+
+}
 
 /* MARKET ENGINE */
 
+let market=[]
+
 async function marketEngine(){
 
-const res=await fetch(
-"https://fapi.binance.com/fapi/v1/ticker/24hr"
-)
+const res=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
 
 market=await res.json()
 
 updateRadar()
 updateHeatmap()
-aiProbability()
-manipulation()
 
 }
 
@@ -257,7 +291,7 @@ function updateRadar(){
 let top=market
 .filter(c=>c.symbol.endsWith("USDT"))
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(0,15)
+.slice(0,10)
 
 let html=""
 
@@ -265,12 +299,7 @@ top.forEach(c=>{
 
 let color=c.priceChangePercent>0?"green":"red"
 
-html+=`
-<div class="${color}">
-${c.symbol}
-${Number(c.priceChangePercent).toFixed(2)}%
-</div>
-`
+html+=`<div class="${color}">${c.symbol} ${c.priceChangePercent}%</div>`
 
 })
 
@@ -284,7 +313,7 @@ function updateHeatmap(){
 
 let html=""
 
-market.slice(0,40).forEach(c=>{
+market.slice(0,30).forEach(c=>{
 
 let color=c.priceChangePercent>0?"green":"red"
 
@@ -293,112 +322,6 @@ html+=`<span class="${color}">${c.symbol}</span> `
 })
 
 heatmap.innerHTML=html
-
-}
-
-/* FUNDING */
-
-async function fundingRate(){
-
-const res=await fetch(
-"https://fapi.binance.com/fapi/v1/premiumIndex"
-)
-
-const data=await res.json()
-
-let html=""
-
-data.slice(0,10).forEach(c=>{
-
-html+=`
-<div>
-${c.symbol}
-${(c.lastFundingRate*100).toFixed(3)}%
-</div>
-`
-
-})
-
-funding.innerHTML=html
-
-}
-
-/* OPEN INTEREST */
-
-async function openInterest(){
-
-const res=await fetch(
-"https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT"
-)
-
-const data=await res.json()
-
-oi.innerHTML="BTCUSDT OI "+Number(data.openInterest).toFixed(0)
-
-}
-
-/* CVD */
-
-async function cvdEngine(){
-
-const res=await fetch(
-"https://fapi.binance.com/fapi/v1/trades?symbol=BTCUSDT&limit=200"
-)
-
-const trades=await res.json()
-
-let delta=0
-
-trades.forEach(t=>{
-if(t.isBuyerMaker){
-delta-=Number(t.qty)
-}else{
-delta+=Number(t.qty)
-}
-})
-
-cvd.innerHTML="Delta "+delta.toFixed(2)
-
-}
-
-/* AI PROBABILITY */
-
-function aiProbability(){
-
-let btc=market.find(c=>c.symbol==="BTCUSDT")
-
-if(!btc)return
-
-let score=0
-
-if(Math.abs(btc.priceChangePercent)>2) score+=40
-if(btc.quoteVolume>500000000) score+=30
-
-score+=Math.random()*30
-
-probability="Score "+score.toFixed(0)+"%"
-
-}
-
-/* MANIPULATION */
-
-function manipulation(){
-
-let btc=market.find(c=>c.symbol==="BTCUSDT")
-
-if(!btc)return
-
-let move=Math.abs(btc.priceChangePercent)
-
-if(move>4){
-
-liq.innerHTML="⚠ Possible Whale Activity"
-
-}else{
-
-liq.innerHTML="Normal Market"
-
-}
 
 }
 
@@ -427,16 +350,12 @@ botFeed.prepend(d)
 
 }
 
-/* ENGINE LOOP */
+/* LOOPS */
 
 marketEngine()
-fundingRate()
-openInterest()
 
 setInterval(marketEngine,30000)
-setInterval(fundingRate,60000)
-setInterval(openInterest,60000)
-setInterval(cvdEngine,15000)
+
 setInterval(bot,60000)
 
 </script>

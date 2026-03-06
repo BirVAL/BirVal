@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="UTF-8">
+
+<title>BirVal v40 — Institutional Crypto Terminal</title>
+
+<script src="https://s3.tradingview.com/tv.js"></script>
+
+<style>
+
+body{
+margin:0;
+background:#0f172a;
+color:white;
+font-family:monospace;
+}
+
+.header{
+text-align:center;
+padding:10px;
+font-size:20px;
+color:#60a5fa;
+border-bottom:1px solid #3b82f6;
+}
+
+/* LAYOUT */
+
+.layout{
+
+display:grid;
+
+grid-template-columns:220px auto;
+
+grid-template-rows:520px auto;
+
+height:100vh;
+
+}
+
+/* WATCHLIST */
+
+.watch{
+
+grid-column:1;
+
+grid-row:1;
+
+overflow:auto;
+
+border-right:1px solid #3b82f6;
+
+border-bottom:1px solid #3b82f6;
+
+padding:5px;
+
+background:#111827;
+
+}
+
+.coin{
+
+border:1px solid #3b82f6;
+
+padding:5px;
+
+margin-bottom:4px;
+
+cursor:pointer;
+
+font-size:11px;
+
+}
+
+.coin:hover{
+
+background:#1f2937;
+
+}
+
+/* CHART */
+
+.chart{
+
+grid-column:2;
+
+grid-row:1;
+
+}
+
+/* BOT */
+
+.bot{
+
+grid-column:1;
+
+grid-row:2;
+
+overflow:auto;
+
+border-right:1px solid #3b82f6;
+
+padding:6px;
+
+background:#111827;
+
+}
+
+.signal{
+
+border:1px solid #3b82f6;
+
+padding:8px;
+
+margin-bottom:6px;
+
+font-size:11px;
+
+}
+
+.long{background:#022c22;color:#22c55e;}
+
+.short{background:#3b0a0a;color:#ef4444;}
+
+.close{background:#1f2937;color:#9ca3af;}
+
+/* PANELS */
+
+.modules{
+
+grid-column:2;
+
+grid-row:2;
+
+display:grid;
+
+grid-template-columns:repeat(7,1fr);
+
+gap:5px;
+
+padding:5px;
+
+}
+
+.panel{
+
+border:1px solid #3b82f6;
+
+padding:5px;
+
+font-size:11px;
+
+background:#111827;
+
+}
+
+.panel-title{
+
+color:#93c5fd;
+
+margin-bottom:4px;
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="header">
+
+BirVal v40 — Institutional Crypto Terminal
+
+</div>
+
+<div class="layout">
+
+<div class="watch" id="watchlist"></div>
+
+<div class="chart" id="chart"></div>
+
+<div class="bot" id="botFeed"></div>
+
+<div class="modules">
+
+<div class="panel">
+
+<div class="panel-title">Trade Calculator</div>
+
+</div>
+
+<div class="panel">
+
+<div class="panel-title">Opportunity Radar</div>
+
+</div>
+
+<div class="panel">
+
+<div class="panel-title">Open Interest</div>
+
+</div>
+
+<div class="panel">
+
+<div class="panel-title">Funding Rate</div>
+
+</div>
+
+<div class="panel">
+
+<div class="panel-title">CVD</div>
+
+</div>
+
+<div class="panel">
+
+<div class="panel-title">Liquidations</div>
+
+</div>
+
+<div class="panel">
+
+<div class="panel-title">Market Heatmap</div>
+
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+/* CHART */
+
+let tvWidget=new TradingView.widget({
+
+symbol:"BINANCE:BTCUSDT",
+
+interval:"60",
+
+container_id:"chart",
+
+theme:"dark",
+
+style:"1",
+
+autosize:true
+
+})
+
+/* WATCHLIST */
+
+const coins=[
+
+"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT",
+
+"ADAUSDT","DOGEUSDT","AVAXUSDT","LINKUSDT","DOTUSDT",
+
+"TONUSDT","HBARUSDT","TAOUSDT","NEARUSDT","APTUSDT",
+
+"INJUSDT","RNDRUSDT","FETUSDT"
+
+]
+
+coins.forEach(c=>{
+
+watchlist.innerHTML+=`<div class="coin" onclick="changeSymbol('${c}')">${c}</div>`
+
+})
+
+function changeSymbol(symbol){
+
+tvWidget=new TradingView.widget({
+
+symbol:"BINANCE:"+symbol,
+
+interval:"60",
+
+container_id:"chart",
+
+theme:"dark",
+
+style:"1",
+
+autosize:true
+
+})
+
+}
+
+/* BOT */
+
+function addSignal(){
+
+let pair=coins[Math.floor(Math.random()*coins.length)]
+
+let entry=(100+Math.random()*200).toFixed(2)
+
+let tp1=(entry*1.02).toFixed(2)
+
+let tp2=(entry*1.05).toFixed(2)
+
+let sl=(entry*0.98).toFixed(2)
+
+let dir=Math.random()>0.5?"long":"short"
+
+let html=`
+
+${dir=="long"?"🟢 OPEN LONG":"🔴 OPEN SHORT"} [15m]
+
+Activo: ${pair}
+
+Entrada: ${entry}
+
+TP1: ${tp1}
+
+TP2: ${tp2}
+
+SL: ${sl}
+
+Hora: ${new Date().toLocaleTimeString()}
+
+`
+
+let div=document.createElement("div")
+
+div.className="signal "+dir
+
+div.innerHTML=html
+
+botFeed.prepend(div)
+
+if(botFeed.children.length>50)
+
+botFeed.removeChild(botFeed.lastChild)
+
+}
+
+addSignal()
+
+</script>
+
+</body>
+
+</html>

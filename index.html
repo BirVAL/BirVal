@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
 
 <meta charset="UTF-8">
@@ -11,18 +12,22 @@
 
 body{
 margin:0;
-background:#0f172a;
+background:#0b0f1c;
 color:white;
 font-family:monospace;
 }
+
+/* HEADER */
 
 .header{
 text-align:center;
 padding:6px;
 font-size:18px;
-color:#60a5fa;
-border-bottom:1px solid #3b82f6;
+color:#93c5fd;
+border-bottom:1px solid #60a5fa;
 }
+
+/* LAYOUT */
 
 .layout{
 display:grid;
@@ -37,13 +42,13 @@ height:100vh;
 grid-column:1;
 grid-row:1;
 overflow:auto;
-border-right:1px solid #3b82f6;
-background:#111827;
+border-right:1px solid #60a5fa;
+background:#0f1629;
 padding:5px;
 }
 
 .coin{
-border:1px solid #3b82f6;
+border:1px solid #60a5fa;
 padding:4px;
 margin-bottom:4px;
 cursor:pointer;
@@ -51,7 +56,7 @@ font-size:11px;
 }
 
 .coin:hover{
-background:#1f2937;
+background:#1b2748;
 }
 
 /* CHART */
@@ -67,9 +72,9 @@ grid-row:1;
 grid-column:1;
 grid-row:2;
 overflow:auto;
-border-right:1px solid #3b82f6;
+border-right:1px solid #60a5fa;
 padding:5px;
-background:#111827;
+background:#0f1629;
 font-size:11px;
 }
 
@@ -84,22 +89,31 @@ gap:5px;
 padding:5px;
 }
 
+/* PANEL */
+
 .panel{
-border:1px solid #3b82f6;
-background:#111827;
+border:1px solid #60a5fa;
+background:#0f1629;
+}
+
+.panel-header{
+padding:4px;
+cursor:pointer;
+color:#93c5fd;
+border-bottom:1px solid #60a5fa;
+}
+
+.panel-header:hover{
+background:#1b2748;
+}
+
+.panel-body{
+display:none;
 padding:5px;
 font-size:11px;
 }
 
-.panel-title{
-color:#93c5fd;
-cursor:pointer;
-}
-
-.panel-content{
-display:none;
-margin-top:4px;
-}
+/* COLORS */
 
 .green{color:#22c55e}
 .red{color:#ef4444}
@@ -112,7 +126,7 @@ margin-top:4px;
 
 <div class="header">
 
-BirVal v43 — Institutional AI Terminal
+BirVal v43 Institutional AI Terminal
 
 </div>
 
@@ -127,38 +141,38 @@ BirVal v43 — Institutional AI Terminal
 <div class="modules">
 
 <div class="panel">
-<div class="panel-title" onclick="toggle(this)">Institutional Radar TOP 100</div>
-<div class="panel-content" id="radar"></div>
+<div class="panel-header" onclick="togglePanel(this)">Trade Calculator</div>
+<div class="panel-body" id="calculator"></div>
 </div>
 
 <div class="panel">
-<div class="panel-title" onclick="toggle(this)">AI Trade Probability</div>
-<div class="panel-content" id="probability"></div>
+<div class="panel-header" onclick="togglePanel(this)">Opportunity Radar</div>
+<div class="panel-body" id="radar"></div>
 </div>
 
 <div class="panel">
-<div class="panel-title" onclick="toggle(this)">Open Interest</div>
-<div class="panel-content" id="oi"></div>
+<div class="panel-header" onclick="togglePanel(this)">Open Interest</div>
+<div class="panel-body" id="oi"></div>
 </div>
 
 <div class="panel">
-<div class="panel-title" onclick="toggle(this)">Funding Rate</div>
-<div class="panel-content" id="funding"></div>
+<div class="panel-header" onclick="togglePanel(this)">Funding Rate</div>
+<div class="panel-body" id="funding"></div>
 </div>
 
 <div class="panel">
-<div class="panel-title" onclick="toggle(this)">CVD Orderflow</div>
-<div class="panel-content" id="cvd"></div>
+<div class="panel-header" onclick="togglePanel(this)">CVD</div>
+<div class="panel-body" id="cvd"></div>
 </div>
 
 <div class="panel">
-<div class="panel-title" onclick="toggle(this)">Manipulation Detector</div>
-<div class="panel-content" id="manip"></div>
+<div class="panel-header" onclick="togglePanel(this)">Liquidations</div>
+<div class="panel-body" id="liq"></div>
 </div>
 
 <div class="panel">
-<div class="panel-title" onclick="toggle(this)">Market Heatmap</div>
-<div class="panel-content" id="heatmap"></div>
+<div class="panel-header" onclick="togglePanel(this)">Market Heatmap</div>
+<div class="panel-body" id="heatmap"></div>
 </div>
 
 </div>
@@ -169,14 +183,16 @@ BirVal v43 — Institutional AI Terminal
 
 /* PANEL TOGGLE */
 
-function toggle(p){
+function togglePanel(header){
 
-let c=p.nextElementSibling
-c.style.display=c.style.display==="block"?"none":"block"
+const body = header.nextElementSibling
+
+body.style.display =
+body.style.display==="block"?"none":"block"
 
 }
 
-/* CHART */
+/* TRADINGVIEW */
 
 let widget=new TradingView.widget({
 symbol:"BINANCE:BTCUSDT",
@@ -201,21 +217,19 @@ autosize:true
 /* WATCHLIST */
 
 const coins=[
-"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT",
-"ADAUSDT","DOGEUSDT","AVAXUSDT","LINKUSDT",
-"DOTUSDT","TONUSDT","HBARUSDT","TAOUSDT",
-"APTUSDT","INJUSDT","RNDRUSDT","FETUSDT"
+"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT",
+"XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT",
+"LINKUSDT","DOTUSDT","TONUSDT","HBARUSDT",
+"TAOUSDT","APTUSDT","INJUSDT","RNDRUSDT"
 ]
 
 coins.forEach(c=>{
 watchlist.innerHTML+=`
-<div class="coin" onclick="changeSymbol('${c}')">
-${c}
-</div>
+<div class="coin" onclick="changeSymbol('${c}')">${c}</div>
 `
 })
 
-/* GLOBAL DATA */
+/* GLOBAL MARKET */
 
 let market=[]
 
@@ -231,19 +245,19 @@ market=await res.json()
 
 updateRadar()
 updateHeatmap()
-aiEngine()
+aiProbability()
 manipulation()
 
 }
 
-/* RADAR TOP 100 */
+/* RADAR */
 
 function updateRadar(){
 
 let top=market
 .filter(c=>c.symbol.endsWith("USDT"))
 .sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(0,20)
+.slice(0,15)
 
 let html=""
 
@@ -255,7 +269,6 @@ html+=`
 <div class="${color}">
 ${c.symbol}
 ${Number(c.priceChangePercent).toFixed(2)}%
-Vol ${(c.quoteVolume/1000000).toFixed(1)}M
 </div>
 `
 
@@ -275,11 +288,7 @@ market.slice(0,40).forEach(c=>{
 
 let color=c.priceChangePercent>0?"green":"red"
 
-html+=`
-<span class="${color}">
-${c.symbol}
-</span>
-`
+html+=`<span class="${color}">${c.symbol}</span> `
 
 })
 
@@ -289,7 +298,7 @@ heatmap.innerHTML=html
 
 /* FUNDING */
 
-async function funding(){
+async function fundingRate(){
 
 const res=await fetch(
 "https://fapi.binance.com/fapi/v1/premiumIndex"
@@ -324,16 +333,13 @@ const res=await fetch(
 
 const data=await res.json()
 
-oi.innerHTML=`
-BTCUSDT
-OI ${Number(data.openInterest).toFixed(0)}
-`
+oi.innerHTML="BTCUSDT OI "+Number(data.openInterest).toFixed(0)
 
 }
 
 /* CVD */
 
-async function cvd(){
+async function cvdEngine(){
 
 const res=await fetch(
 "https://fapi.binance.com/fapi/v1/trades?symbol=BTCUSDT&limit=200"
@@ -344,22 +350,20 @@ const trades=await res.json()
 let delta=0
 
 trades.forEach(t=>{
-
 if(t.isBuyerMaker){
 delta-=Number(t.qty)
 }else{
 delta+=Number(t.qty)
 }
-
 })
 
 cvd.innerHTML="Delta "+delta.toFixed(2)
 
 }
 
-/* AI PROBABILITY ENGINE */
+/* AI PROBABILITY */
 
-function aiEngine(){
+function aiProbability(){
 
 let btc=market.find(c=>c.symbol==="BTCUSDT")
 
@@ -367,28 +371,16 @@ if(!btc)return
 
 let score=0
 
-let move=Math.abs(btc.priceChangePercent)
-
-if(move>2) score+=40
-
+if(Math.abs(btc.priceChangePercent)>2) score+=40
 if(btc.quoteVolume>500000000) score+=30
 
 score+=Math.random()*30
 
-let signal="Neutral"
-
-if(score>70) signal="Bullish Breakout"
-
-if(score<30) signal="Bearish Breakdown"
-
-probability.innerHTML=`
-Score ${score.toFixed(0)}%
-${signal}
-`
+probability="Score "+score.toFixed(0)+"%"
 
 }
 
-/* MANIPULATION DETECTOR */
+/* MANIPULATION */
 
 function manipulation(){
 
@@ -400,11 +392,11 @@ let move=Math.abs(btc.priceChangePercent)
 
 if(move>4){
 
-manip.innerHTML="⚠ Whale Manipulation Risk"
+liq.innerHTML="⚠ Possible Whale Activity"
 
 }else{
 
-manip.innerHTML="Normal Market"
+liq.innerHTML="Normal Market"
 
 }
 
@@ -418,20 +410,13 @@ let btc=market.find(c=>c.symbol==="BTCUSDT")
 
 if(!btc)return
 
-let move=btc.priceChangePercent
-
-let dir=move>1?"LONG":"SHORT"
+let dir=btc.priceChangePercent>1?"LONG":"SHORT"
 
 let html=`
-
 ${dir}
-
 BTCUSDT
-
-Move ${Number(move).toFixed(2)}%
-
-Time ${new Date().toLocaleTimeString()}
-
+${btc.priceChangePercent.toFixed(2)}%
+${new Date().toLocaleTimeString()}
 `
 
 let d=document.createElement("div")
@@ -445,19 +430,16 @@ botFeed.prepend(d)
 /* ENGINE LOOP */
 
 marketEngine()
-funding()
+fundingRate()
 openInterest()
 
 setInterval(marketEngine,30000)
-setInterval(funding,60000)
+setInterval(fundingRate,60000)
 setInterval(openInterest,60000)
-setInterval(cvd,15000)
+setInterval(cvdEngine,15000)
 setInterval(bot,60000)
 
 </script>
-
-</body>
-</html>
 
 </body>
 

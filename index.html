@@ -17,8 +17,6 @@ color:white;
 font-family:monospace;
 }
 
-/* HEADER */
-
 .header{
 text-align:center;
 padding:6px;
@@ -27,16 +25,12 @@ color:#93c5fd;
 border-bottom:1px solid #60a5fa;
 }
 
-/* LAYOUT */
-
 .layout{
 display:grid;
 grid-template-columns:200px auto;
 grid-template-rows:520px auto;
 height:100vh;
 }
-
-/* WATCHLIST */
 
 .watch{
 grid-column:1;
@@ -59,14 +53,10 @@ font-size:11px;
 background:#1b2748;
 }
 
-/* CHART */
-
 .chart{
 grid-column:2;
 grid-row:1;
 }
-
-/* BOT */
 
 .bot{
 grid-column:1;
@@ -78,8 +68,6 @@ padding:5px;
 font-size:11px;
 }
 
-/* MODULES */
-
 .modules{
 grid-column:2;
 grid-row:2;
@@ -88,8 +76,6 @@ grid-template-columns:repeat(7,1fr);
 gap:5px;
 padding:5px;
 }
-
-/* PANELS */
 
 .panel{
 border:1px solid #60a5fa;
@@ -103,35 +89,15 @@ color:#93c5fd;
 border-bottom:1px solid #60a5fa;
 }
 
-.panel-header:hover{
-background:#1b2748;
-}
-
 .panel-body{
 display:none;
 padding:5px;
 font-size:11px;
 }
 
-/* COLORS */
-
 .green{color:#22c55e}
 .red{color:#ef4444}
-
-input{
-width:70px;
-margin:2px;
-background:#111827;
-border:1px solid #60a5fa;
-color:white;
-}
-
-button{
-background:#60a5fa;
-border:none;
-padding:4px;
-cursor:pointer;
-}
+.yellow{color:#facc15}
 
 </style>
 
@@ -140,59 +106,25 @@ cursor:pointer;
 <body>
 
 <div class="header">
-
 BirVal v43 Institutional Terminal
-
 </div>
 
 <div class="layout">
 
 <div class="watch" id="watchlist"></div>
-
 <div class="chart" id="chart"></div>
-
 <div class="bot" id="botFeed"></div>
 
 <div class="modules">
 
 <div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">Trade Calculator</div>
-<div class="panel-body">
-
-Entry <input id="entry">
-Lev <input id="lev">
-SL % <input id="sl">
-
-<button onclick="calc()">Calc</button>
-
-<div id="calcResult"></div>
-
-</div>
-</div>
-
-<div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">Opportunity Radar</div>
+<div class="panel-header" onclick="togglePanel(this)">Opportunity Radar PRO</div>
 <div class="panel-body" id="radar"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">Open Interest</div>
-<div class="panel-body" id="oi"></div>
-</div>
-
-<div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">Funding Rate</div>
+<div class="panel-header" onclick="togglePanel(this)">Funding Monitor</div>
 <div class="panel-body" id="funding"></div>
-</div>
-
-<div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">CVD</div>
-<div class="panel-body" id="cvd"></div>
-</div>
-
-<div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">Liquidations</div>
-<div class="panel-body" id="liq"></div>
 </div>
 
 <div class="panel">
@@ -208,124 +140,54 @@ SL % <input id="sl">
 
 /* PANEL */
 
-function togglePanel(header){
-
-const body = header.nextElementSibling
-
-body.style.display =
-body.style.display==="block"?"none":"block"
-
+function togglePanel(h){
+const b=h.nextElementSibling
+b.style.display=b.style.display==="block"?"none":"block"
 }
 
-/* TRADINGVIEW CHART */
+/* CHART */
 
 let widget
 
 function loadChart(symbol){
-
-widget = new TradingView.widget({
-
+widget=new TradingView.widget({
 symbol:symbol,
 interval:"60",
 container_id:"chart",
 theme:"dark",
 autosize:true
-
 })
-
 }
-
-/* SMART SYMBOL RESOLUTION */
 
 function changeSymbol(symbol){
-
-const trySymbols=[
-
-"BINANCE:"+symbol+".P",
-"BINANCE:"+symbol,
-"BINANCE:"+symbol
-
-]
-
-for(let s of trySymbols){
-
-loadChart(s)
-break
-
+loadChart("BINANCE:"+symbol)
 }
-
-}
-
-/* DEFAULT CHART */
 
 loadChart("BINANCE:BTCUSDT")
 
 /* WATCHLIST */
 
 const coins=[
-
-"BTCUSDT",
-"ETHUSDT",
-"BNBUSDT",
-"SOLUSDT",
-"XRPUSDT",
-
-"DOGEUSDT",
-"TONUSDT",
-"AVAXUSDT",
-"LINKUSDT",
-"TRXUSDT",
-
-"NEARUSDT",
-"APTUSDT",
-"INJUSDT",
-"OPUSDT",
-"ARBUSDT",
-
-"SUIUSDT",
-"AAVEUSDT",
-"HBARUSDT",
-"TAOUSDT",
-"FETUSDT"
-
+"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT",
+"DOGEUSDT","TONUSDT","AVAXUSDT","LINKUSDT","TRXUSDT",
+"NEARUSDT","APTUSDT","INJUSDT","OPUSDT","ARBUSDT",
+"SUIUSDT","AAVEUSDT","HBARUSDT","TAOUSDT","FETUSDT"
 ]
 
 coins.forEach(symbol=>{
-
 let div=document.createElement("div")
-
 div.className="coin"
-
 div.innerText=symbol
-
 div.onclick=()=>changeSymbol(symbol)
-
 watchlist.appendChild(div)
-
 })
-
-/* CALCULATOR */
-
-function calc(){
-
-let entry=Number(entry.value)
-let lev=Number(lev.value)
-let sl=Number(sl.value)
-
-let liq=entry-(entry/lev)
-
-calcResult.innerHTML=
-
-"Liquidation "+liq.toFixed(2)+"<br>"+
-"StopLoss "+(entry*(1-sl/100)).toFixed(2)
-
-}
 
 /* MARKET ENGINE */
 
 let market=[]
+let fundingData=[]
 
-async function marketEngine(){
+async function loadMarket(){
 
 const res=await fetch(
 "https://fapi.binance.com/fapi/v1/ticker/24hr"
@@ -333,36 +195,107 @@ const res=await fetch(
 
 market=await res.json()
 
-updateRadar()
+const fund=await fetch(
+"https://fapi.binance.com/fapi/v1/premiumIndex"
+)
+
+fundingData=await fund.json()
+
+runRadar()
 updateHeatmap()
 
 }
 
-/* RADAR */
+/* RADAR PRO */
 
-function updateRadar(){
+function runRadar(){
 
-let top=market
-.filter(c=>c.symbol.endsWith("USDT"))
-.sort((a,b)=>b.quoteVolume-a.quoteVolume)
-.slice(0,10)
+let opportunities=[]
+
+market.forEach(asset=>{
+
+if(!asset.symbol.endsWith("USDT")) return
+
+let move=Math.abs(asset.priceChangePercent)
+let volume=Number(asset.quoteVolume)
+
+let volatilityScore = move>5 ? 30 : move>3 ? 20 : move>1 ? 10 : 0
+let volumeScore = volume>200000000 ? 30 : volume>100000000 ? 20 : 0
+let momentumScore = move>2 ? 20 : 0
+
+let fundingAsset = fundingData.find(f=>f.symbol===asset.symbol)
+
+let fundingScore=0
+
+if(fundingAsset){
+
+let f=Math.abs(fundingAsset.lastFundingRate)
+
+if(f>0.001) fundingScore=20
+
+}
+
+let score=volatilityScore+volumeScore+momentumScore+fundingScore
+
+if(score>40){
+
+opportunities.push({
+symbol:asset.symbol,
+score:score,
+move:move
+})
+
+}
+
+})
+
+opportunities.sort((a,b)=>b.score-a.score)
 
 let html=""
 
-top.forEach(c=>{
+opportunities.slice(0,10).forEach(o=>{
 
-let color=c.priceChangePercent>0?"green":"red"
+html+=`
+<div class="yellow">
+${o.symbol}
+Score ${o.score}
+Move ${o.move.toFixed(2)}%
+</div>
+`
 
-html+=
-
-"<div class='"+color+"'>"+
-c.symbol+" "+
-Number(c.priceChangePercent).toFixed(2)+"%"+
-"</div>"
+if(o.score>60){
+generateBotSignal(o.symbol,o.move)
+}
 
 })
 
 radar.innerHTML=html
+
+}
+
+/* BOT SIGNAL */
+
+function generateBotSignal(symbol,move){
+
+let dir=move>0?"LONG":"SHORT"
+
+let html=`
+
+${dir}
+
+${symbol}
+
+Move ${move.toFixed(2)}%
+
+${new Date().toLocaleTimeString()}
+
+`
+
+let d=document.createElement("div")
+
+d.innerHTML=html
+
+botFeed.prepend(d)
 
 }
 
@@ -376,11 +309,9 @@ market.slice(0,30).forEach(c=>{
 
 let color=c.priceChangePercent>0?"green":"red"
 
-html+=
-
-"<span class='"+color+"'>"+
-c.symbol+
-"</span> "
+html+=`<span class="${color}">
+${c.symbol}
+</span> `
 
 })
 
@@ -388,41 +319,34 @@ heatmap.innerHTML=html
 
 }
 
-/* BOT */
+/* FUNDING */
 
-function bot(){
+function updateFunding(){
 
-let btc=market.find(c=>c.symbol==="BTCUSDT")
+let html=""
 
-if(!btc)return
+fundingData.slice(0,10).forEach(f=>{
 
-let dir=btc.priceChangePercent>1?"LONG":"SHORT"
+html+=`
+<div>
+${f.symbol}
+${(f.lastFundingRate*100).toFixed(3)}%
+</div>
+`
 
-let html=
+})
 
-dir+"<br>"+
-"BTCUSDT<br>"+
-btc.priceChangePercent.toFixed(2)+"%<br>"+
-new Date().toLocaleTimeString()
-
-let d=document.createElement("div")
-
-d.innerHTML=html
-
-botFeed.prepend(d)
+funding.innerHTML=html
 
 }
 
 /* LOOPS */
 
-marketEngine()
+loadMarket()
 
-setInterval(marketEngine,30000)
-
-setInterval(bot,60000)
+setInterval(loadMarket,30000)
 
 </script>
 
 </body>
-
 </html>

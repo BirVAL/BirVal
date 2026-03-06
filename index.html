@@ -4,7 +4,7 @@
 <head>
 
 <meta charset="UTF-8">
-<title>BirVal v43 Institutional Terminal</title>
+<title>BirVal v44 Institutional Terminal</title>
 
 <script src="https://s3.tradingview.com/tv.js"></script>
 
@@ -72,7 +72,7 @@ font-size:11px;
 grid-column:2;
 grid-row:2;
 display:grid;
-grid-template-columns:repeat(7,1fr);
+grid-template-columns:repeat(4,1fr);
 gap:5px;
 padding:5px;
 }
@@ -98,6 +98,7 @@ font-size:11px;
 .green{color:#22c55e}
 .red{color:#ef4444}
 .yellow{color:#facc15}
+.orange{color:#fb923c}
 
 </style>
 
@@ -106,7 +107,7 @@ font-size:11px;
 <body>
 
 <div class="header">
-BirVal v43 Institutional Terminal
+BirVal v44 Institutional Terminal
 </div>
 
 <div class="layout">
@@ -118,17 +119,30 @@ BirVal v43 Institutional Terminal
 <div class="modules">
 
 <div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">Opportunity Radar PRO</div>
+<div class="panel-header" onclick="togglePanel(this)">
+Institutional Radar
+</div>
 <div class="panel-body" id="radar"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">Funding Monitor</div>
+<div class="panel-header" onclick="togglePanel(this)">
+Liquidity Engine
+</div>
+<div class="panel-body" id="liquidity"></div>
+</div>
+
+<div class="panel">
+<div class="panel-header" onclick="togglePanel(this)">
+Funding Monitor
+</div>
 <div class="panel-body" id="funding"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">Market Heatmap</div>
+<div class="panel-header" onclick="togglePanel(this)">
+Market Heatmap
+</div>
 <div class="panel-body" id="heatmap"></div>
 </div>
 
@@ -145,22 +159,28 @@ const b=h.nextElementSibling
 b.style.display=b.style.display==="block"?"none":"block"
 }
 
-/* CHART */
+/* TRADINGVIEW */
 
 let widget
 
 function loadChart(symbol){
+
 widget=new TradingView.widget({
+
 symbol:symbol,
 interval:"60",
 container_id:"chart",
 theme:"dark",
 autosize:true
+
 })
+
 }
 
 function changeSymbol(symbol){
+
 loadChart("BINANCE:"+symbol)
+
 }
 
 loadChart("BINANCE:BTCUSDT")
@@ -168,18 +188,36 @@ loadChart("BINANCE:BTCUSDT")
 /* WATCHLIST */
 
 const coins=[
-"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT",
-"DOGEUSDT","TONUSDT","AVAXUSDT","LINKUSDT","TRXUSDT",
-"NEARUSDT","APTUSDT","INJUSDT","OPUSDT","ARBUSDT",
-"SUIUSDT","AAVEUSDT","HBARUSDT","TAOUSDT","FETUSDT"
+
+"BTCUSDT",
+"ETHUSDT",
+"BNBUSDT",
+"SOLUSDT",
+"DOGEUSDT",
+"TONUSDT",
+"LINKUSDT",
+"TRXUSDT",
+"NEARUSDT",
+"APTUSDT",
+"INJUSDT",
+"ARBUSDT",
+"SUIUSDT",
+"AAVEUSDT",
+"HBARUSDT",
+"TAOUSDT"
+
 ]
 
 coins.forEach(symbol=>{
+
 let div=document.createElement("div")
+
 div.className="coin"
 div.innerText=symbol
 div.onclick=()=>changeSymbol(symbol)
+
 watchlist.appendChild(div)
+
 })
 
 /* MARKET ENGINE */
@@ -202,47 +240,44 @@ const fund=await fetch(
 fundingData=await fund.json()
 
 runRadar()
+runLiquidityEngine()
 updateHeatmap()
+updateFunding()
 
 }
 
-/* RADAR PRO */
+/* RADAR */
 
 function runRadar(){
 
+let filtered=market.filter(a=>
+
+a.symbol.endsWith("USDT") &&
+Number(a.quoteVolume)>80000000
+
+)
+
 let opportunities=[]
 
-market.forEach(asset=>{
-
-if(!asset.symbol.endsWith("USDT")) return
+filtered.forEach(asset=>{
 
 let move=Math.abs(asset.priceChangePercent)
 let volume=Number(asset.quoteVolume)
 
-let volatilityScore = move>5 ? 30 : move>3 ? 20 : move>1 ? 10 : 0
-let volumeScore = volume>200000000 ? 30 : volume>100000000 ? 20 : 0
-let momentumScore = move>2 ? 20 : 0
+let volScore = move>3?30:move>2?20:0
+let volumeScore = volume>150000000?30:volume>100000000?20:0
+let momentumScore = move>4?30:0
 
-let fundingAsset = fundingData.find(f=>f.symbol===asset.symbol)
-
-let fundingScore=0
-
-if(fundingAsset){
-
-let f=Math.abs(fundingAsset.lastFundingRate)
-
-if(f>0.001) fundingScore=20
-
-}
-
-let score=volatilityScore+volumeScore+momentumScore+fundingScore
+let score=volScore+volumeScore+momentumScore
 
 if(score>40){
 
 opportunities.push({
+
 symbol:asset.symbol,
 score:score,
 move:move
+
 })
 
 }
@@ -253,19 +288,21 @@ opportunities.sort((a,b)=>b.score-a.score)
 
 let html=""
 
-opportunities.slice(0,10).forEach(o=>{
+opportunities.slice(0,8).forEach(o=>{
 
 html+=`
-<div class="yellow">
-${o.symbol}
-Score ${o.score}
-Move ${o.move.toFixed(2)}%
-</div>
-`
 
-if(o.score>60){
-generateBotSignal(o.symbol,o.move)
-}
+<div class="yellow">
+
+${o.symbol}
+
+Score ${o.score}
+
+Move ${o.move.toFixed(2)}%
+
+</div>
+
+`
 
 })
 
@@ -273,29 +310,62 @@ radar.innerHTML=html
 
 }
 
-/* BOT SIGNAL */
+/* LIQUIDITY ENGINE */
 
-function generateBotSignal(symbol,move){
+function runLiquidityEngine(){
 
-let dir=move>0?"LONG":"SHORT"
+let html=""
 
-let html=`
+market.forEach(asset=>{
 
-${dir}
+let move=Math.abs(asset.priceChangePercent)
+let volume=Number(asset.quoteVolume)
 
-${symbol}
+let fund = fundingData.find(f=>f.symbol===asset.symbol)
+
+if(!fund) return
+
+let funding=Math.abs(fund.lastFundingRate)
+
+if(move>4 && volume>150000000){
+
+html+=`
+
+<div class="orange">
+
+Stop Cluster Risk
+
+${asset.symbol}
 
 Move ${move.toFixed(2)}%
 
-${new Date().toLocaleTimeString()}
+</div>
 
 `
 
-let d=document.createElement("div")
+}
 
-d.innerHTML=html
+if(move>3 && funding>0.0005){
 
-botFeed.prepend(d)
+html+=`
+
+<div class="red">
+
+Liquidation Risk
+
+${asset.symbol}
+
+Funding ${(fund.lastFundingRate*100).toFixed(3)}%
+
+</div>
+
+`
+
+}
+
+})
+
+liquidity.innerHTML=html
 
 }
 
@@ -309,9 +379,7 @@ market.slice(0,30).forEach(c=>{
 
 let color=c.priceChangePercent>0?"green":"red"
 
-html+=`<span class="${color}">
-${c.symbol}
-</span> `
+html+=`<span class="${color}">${c.symbol}</span> `
 
 })
 
@@ -328,10 +396,15 @@ let html=""
 fundingData.slice(0,10).forEach(f=>{
 
 html+=`
+
 <div>
+
 ${f.symbol}
+
 ${(f.lastFundingRate*100).toFixed(3)}%
+
 </div>
+
 `
 
 })

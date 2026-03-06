@@ -4,7 +4,7 @@
 <head>
 
 <meta charset="UTF-8">
-<title>BirVal v45 Institutional Terminal</title>
+<title>BirVal v48 Institutional Terminal</title>
 
 <script src="https://s3.tradingview.com/tv.js"></script>
 
@@ -58,21 +58,11 @@ grid-column:2;
 grid-row:1;
 }
 
-.bot{
-grid-column:1;
-grid-row:2;
-overflow:auto;
-border-right:1px solid #60a5fa;
-background:#0f1629;
-padding:5px;
-font-size:11px;
-}
-
 .modules{
 grid-column:2;
 grid-row:2;
 display:grid;
-grid-template-columns:repeat(5,1fr);
+grid-template-columns:repeat(9,1fr);
 gap:5px;
 padding:5px;
 }
@@ -84,13 +74,11 @@ background:#0f1629;
 
 .panel-header{
 padding:4px;
-cursor:pointer;
 color:#93c5fd;
 border-bottom:1px solid #60a5fa;
 }
 
 .panel-body{
-display:block;
 padding:5px;
 font-size:11px;
 }
@@ -107,40 +95,59 @@ font-size:11px;
 <body>
 
 <div class="header">
-BirVal v45 Institutional Terminal
+BirVal v48 Institutional Intelligence Terminal
 </div>
 
 <div class="layout">
 
 <div class="watch" id="watchlist"></div>
 <div class="chart" id="chart"></div>
-<div class="bot" id="botFeed"></div>
 
 <div class="modules">
 
 <div class="panel">
-<div class="panel-header">Institutional Radar</div>
+<div class="panel-header">Opportunity Radar</div>
 <div class="panel-body" id="radar"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header">Liquidity Engine</div>
-<div class="panel-body" id="liquidity"></div>
+<div class="panel-header">Derivatives Intelligence</div>
+<div class="panel-body" id="derivatives"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header">Funding Monitor</div>
-<div class="panel-body" id="funding"></div>
+<div class="panel-header">Orderflow Engine</div>
+<div class="panel-body" id="orderflow"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header">Market Heatmap</div>
-<div class="panel-body" id="heatmap"></div>
+<div class="panel-header">Smart Money</div>
+<div class="panel-body" id="smart"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header">AI Market Regime</div>
-<div class="panel-body" id="regime"></div>
+<div class="panel-header">Liquidity Intelligence</div>
+<div class="panel-body" id="liq"></div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Market Structure</div>
+<div class="panel-body" id="structure"></div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Macro Dashboard</div>
+<div class="panel-body" id="macro"></div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Liquidity Heatmap</div>
+<div class="panel-body" id="heat"></div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Orderbook Walls</div>
+<div class="panel-body" id="walls"></div>
 </div>
 
 </div>
@@ -149,20 +156,16 @@ BirVal v45 Institutional Terminal
 
 <script>
 
-/* CHART */
-
 let widget
 
 function loadChart(symbol){
 
 widget=new TradingView.widget({
-
 symbol:symbol,
 interval:"60",
 container_id:"chart",
 theme:"dark",
 autosize:true
-
 })
 
 }
@@ -175,65 +178,40 @@ loadChart("BINANCE:"+symbol)
 
 loadChart("BINANCE:BTCUSDT")
 
-/* INSTITUTIONAL UNIVERSE */
-
 const coins=[
-
-"BTCUSDT",
-"ETHUSDT",
-"BNBUSDT",
-"SOLUSDT",
-"DOGEUSDT",
-"TONUSDT",
-"LINKUSDT",
-"TRXUSDT",
-"NEARUSDT",
-"APTUSDT",
-"INJUSDT",
-"ARBUSDT",
-"SUIUSDT",
-"AAVEUSDT",
-"HBARUSDT",
-"TAOUSDT"
-
+"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","DOGEUSDT",
+"TONUSDT","LINKUSDT","TRXUSDT","NEARUSDT","APTUSDT",
+"INJUSDT","ARBUSDT","SUIUSDT","AAVEUSDT","HBARUSDT","TAOUSDT"
 ]
 
 coins.forEach(symbol=>{
-
 let div=document.createElement("div")
-
 div.className="coin"
 div.innerText=symbol
 div.onclick=()=>changeSymbol(symbol)
-
 watchlist.appendChild(div)
-
 })
-
-/* MARKET DATA */
 
 let market=[]
 let fundingData=[]
 
 async function loadMarket(){
 
-const res=await fetch(
-"https://fapi.binance.com/fapi/v1/ticker/24hr"
-)
-
+const res=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
 market=await res.json()
 
-const fund=await fetch(
-"https://fapi.binance.com/fapi/v1/premiumIndex"
-)
-
+const fund=await fetch("https://fapi.binance.com/fapi/v1/premiumIndex")
 fundingData=await fund.json()
 
 runRadar()
+runDerivatives()
+runOrderflow()
+runSmartMoney()
 runLiquidity()
-updateFunding()
-updateHeatmap()
-runRegime()
+runStructure()
+runMacro()
+runHeatmap()
+runWalls()
 
 }
 
@@ -246,36 +224,18 @@ let html=""
 coins.forEach(symbol=>{
 
 let asset=market.find(a=>a.symbol===symbol)
-
 if(!asset) return
 
-let volume=Number(asset.quoteVolume)
 let move=Math.abs(asset.priceChangePercent)
+let volume=Number(asset.quoteVolume)
 
 if(volume<120000000) return
 
-let score=0
-
-if(move>2) score+=20
-if(move>3) score+=30
-if(move>4) score+=40
-if(volume>200000000) score+=20
+let score=move*10 + volume/10000000
 
 if(score<40) return
 
-html+=`
-
-<div class="yellow">
-
-${symbol}
-
-Score ${score}
-
-Move ${move.toFixed(2)}%
-
-</div>
-
-`
+html+=`<div class="yellow">${symbol} Score ${score.toFixed(0)}</div>`
 
 })
 
@@ -283,7 +243,68 @@ radar.innerHTML=html
 
 }
 
-/* LIQUIDITY ENGINE */
+/* DERIVATIVES */
+
+function runDerivatives(){
+
+let html=""
+
+fundingData.slice(0,10).forEach(f=>{
+
+html+=`<div>${f.symbol} ${(f.lastFundingRate*100).toFixed(3)}%</div>`
+
+})
+
+derivatives.innerHTML=html
+
+}
+
+/* ORDERFLOW */
+
+function runOrderflow(){
+
+let html=""
+
+coins.forEach(symbol=>{
+
+let asset=market.find(a=>a.symbol===symbol)
+if(!asset) return
+
+let vol=Number(asset.quoteVolume)
+let move=Math.abs(asset.priceChangePercent)
+
+if(vol>200000000 && move>3)
+html+=`<div class="green">Aggressive Orders ${symbol}</div>`
+
+})
+
+orderflow.innerHTML=html
+
+}
+
+/* SMART MONEY */
+
+function runSmartMoney(){
+
+let html=""
+
+coins.forEach(symbol=>{
+
+let asset=market.find(a=>a.symbol===symbol)
+if(!asset) return
+
+let vol=Number(asset.quoteVolume)
+
+if(vol>250000000)
+html+=`<div class="yellow">Whale Flow ${symbol}</div>`
+
+})
+
+smart.innerHTML=html
+
+}
+
+/* LIQUIDITY */
 
 function runLiquidity(){
 
@@ -292,129 +313,86 @@ let html=""
 coins.forEach(symbol=>{
 
 let asset=market.find(a=>a.symbol===symbol)
-let fund=fundingData.find(f=>f.symbol===symbol)
+if(!asset) return
 
-if(!asset||!fund) return
+let vol=Number(asset.quoteVolume)
 
-let move=Math.abs(asset.priceChangePercent)
-let volume=Number(asset.quoteVolume)
-let funding=Math.abs(fund.lastFundingRate)
-
-if(move>4 && volume>150000000){
-
-html+=`
-
-<div class="orange">
-
-Stop Cluster Risk
-
-${symbol}
-
-Move ${move.toFixed(2)}%
-
-</div>
-
-`
-
-}
-
-if(move>3 && funding>0.0005){
-
-html+=`
-
-<div class="red">
-
-Liquidation Risk
-
-${symbol}
-
-Funding ${(fund.lastFundingRate*100).toFixed(3)}%
-
-</div>
-
-`
-
-}
+if(vol>300000000)
+html+=`<div class="orange">Liquidity Wall ${symbol}</div>`
 
 })
 
-liquidity.innerHTML=html
+liq.innerHTML=html
 
 }
 
-/* FUNDING */
+/* MARKET STRUCTURE */
 
-function updateFunding(){
+function runStructure(){
 
-let html=""
+let btc=market.find(a=>a.symbol==="BTCUSDT")
 
-fundingData.slice(0,10).forEach(f=>{
+let move=btc.priceChangePercent
 
-html+=`
+let regime=""
 
-<div>
+if(move>2) regime="BULL TREND"
+else if(move<-2) regime="BEAR TREND"
+else regime="ACCUMULATION"
 
-${f.symbol}
+structure.innerHTML=regime
 
-${(f.lastFundingRate*100).toFixed(3)}%
+}
 
-</div>
+/* MACRO */
 
-`
+function runMacro(){
 
-})
+let btc=market.find(a=>a.symbol==="BTCUSDT")
 
-funding.innerHTML=html
+macro.innerHTML=`BTC 24h: ${btc.priceChangePercent}%`
 
 }
 
 /* HEATMAP */
 
-function updateHeatmap(){
+function runHeatmap(){
 
 let html=""
 
-market.slice(0,30).forEach(c=>{
+market.slice(0,20).forEach(c=>{
 
 let color=c.priceChangePercent>0?"green":"red"
 
-html+=`<span class="${color}">
-${c.symbol}
-</span> `
+html+=`<span class="${color}">${c.symbol}</span> `
 
 })
 
-heatmap.innerHTML=html
+heat.innerHTML=html
 
 }
 
-/* AI MARKET REGIME */
+/* ORDERBOOK WALLS */
 
-function runRegime(){
+function runWalls(){
 
-let btc=market.find(a=>a.symbol==="BTCUSDT")
+let html=""
 
-if(!btc) return
+coins.forEach(symbol=>{
 
-let move=btc.priceChangePercent
-let volume=Number(btc.quoteVolume)
+let asset=market.find(a=>a.symbol===symbol)
+if(!asset) return
 
-let regime=""
+let vol=Number(asset.quoteVolume)
 
-if(move>2 && volume>150000000) regime="BULL TREND"
-else if(move<-2 && volume>150000000) regime="BEAR TREND"
-else if(Math.abs(move)<1 && volume>120000000) regime="ACCUMULATION"
-else regime="DISTRIBUTION"
+if(vol>350000000)
+html+=`<div>Orderbook Wall ${symbol}</div>`
 
-regimeDiv.innerHTML=regime
+})
+
+walls.innerHTML=html
 
 }
-
-/* FIX ID */
-
-const regimeDiv=document.getElementById("regime")
-
-/* LOOPS */
 
 loadMarket()
 
@@ -423,5 +401,4 @@ setInterval(loadMarket,30000)
 </script>
 
 </body>
-
 </html>

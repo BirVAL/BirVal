@@ -4,7 +4,7 @@
 <head>
 
 <meta charset="UTF-8">
-<title>BirVal v44 Institutional Terminal</title>
+<title>BirVal v45 Institutional Terminal</title>
 
 <script src="https://s3.tradingview.com/tv.js"></script>
 
@@ -72,7 +72,7 @@ font-size:11px;
 grid-column:2;
 grid-row:2;
 display:grid;
-grid-template-columns:repeat(4,1fr);
+grid-template-columns:repeat(5,1fr);
 gap:5px;
 padding:5px;
 }
@@ -90,7 +90,7 @@ border-bottom:1px solid #60a5fa;
 }
 
 .panel-body{
-display:none;
+display:block;
 padding:5px;
 font-size:11px;
 }
@@ -107,7 +107,7 @@ font-size:11px;
 <body>
 
 <div class="header">
-BirVal v44 Institutional Terminal
+BirVal v45 Institutional Terminal
 </div>
 
 <div class="layout">
@@ -119,31 +119,28 @@ BirVal v44 Institutional Terminal
 <div class="modules">
 
 <div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">
-Institutional Radar
-</div>
+<div class="panel-header">Institutional Radar</div>
 <div class="panel-body" id="radar"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">
-Liquidity Engine
-</div>
+<div class="panel-header">Liquidity Engine</div>
 <div class="panel-body" id="liquidity"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">
-Funding Monitor
-</div>
+<div class="panel-header">Funding Monitor</div>
 <div class="panel-body" id="funding"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header" onclick="togglePanel(this)">
-Market Heatmap
-</div>
+<div class="panel-header">Market Heatmap</div>
 <div class="panel-body" id="heatmap"></div>
+</div>
+
+<div class="panel">
+<div class="panel-header">AI Market Regime</div>
+<div class="panel-body" id="regime"></div>
 </div>
 
 </div>
@@ -152,13 +149,6 @@ Market Heatmap
 
 <script>
 
-/* PANEL */
-
-function togglePanel(h){
-const b=h.nextElementSibling
-b.style.display=b.style.display==="block"?"none":"block"
-}
-
 /* CHART */
 
 let widget
@@ -166,11 +156,13 @@ let widget
 function loadChart(symbol){
 
 widget=new TradingView.widget({
+
 symbol:symbol,
 interval:"60",
 container_id:"chart",
 theme:"dark",
 autosize:true
+
 })
 
 }
@@ -239,10 +231,13 @@ fundingData=await fund.json()
 
 runRadar()
 runLiquidity()
+updateFunding()
+updateHeatmap()
+runRegime()
 
 }
 
-/* RADAR FILTRADO */
+/* RADAR */
 
 function runRadar(){
 
@@ -259,15 +254,11 @@ let move=Math.abs(asset.priceChangePercent)
 
 if(volume<120000000) return
 
-let volExp=move>2
-let momentum=move>3
-let breakout=move>4
-
 let score=0
 
-if(volExp) score+=20
-if(momentum) score+=30
-if(breakout) score+=40
+if(move>2) score+=20
+if(move>3) score+=30
+if(move>4) score+=40
 if(volume>200000000) score+=20
 
 if(score<40) return
@@ -351,6 +342,78 @@ liquidity.innerHTML=html
 
 }
 
+/* FUNDING */
+
+function updateFunding(){
+
+let html=""
+
+fundingData.slice(0,10).forEach(f=>{
+
+html+=`
+
+<div>
+
+${f.symbol}
+
+${(f.lastFundingRate*100).toFixed(3)}%
+
+</div>
+
+`
+
+})
+
+funding.innerHTML=html
+
+}
+
+/* HEATMAP */
+
+function updateHeatmap(){
+
+let html=""
+
+market.slice(0,30).forEach(c=>{
+
+let color=c.priceChangePercent>0?"green":"red"
+
+html+=`<span class="${color}">
+${c.symbol}
+</span> `
+
+})
+
+heatmap.innerHTML=html
+
+}
+
+/* AI MARKET REGIME */
+
+function runRegime(){
+
+let btc=market.find(a=>a.symbol==="BTCUSDT")
+
+if(!btc) return
+
+let move=btc.priceChangePercent
+let volume=Number(btc.quoteVolume)
+
+let regime=""
+
+if(move>2 && volume>150000000) regime="BULL TREND"
+else if(move<-2 && volume>150000000) regime="BEAR TREND"
+else if(Math.abs(move)<1 && volume>120000000) regime="ACCUMULATION"
+else regime="DISTRIBUTION"
+
+regimeDiv.innerHTML=regime
+
+}
+
+/* FIX ID */
+
+const regimeDiv=document.getElementById("regime")
+
 /* LOOPS */
 
 loadMarket()
@@ -360,4 +423,5 @@ setInterval(loadMarket,30000)
 </script>
 
 </body>
+
 </html>

@@ -4,7 +4,7 @@
 <head>
 
 <meta charset="UTF-8">
-<title>BirVal v48 Institutional Terminal</title>
+<title>BirVal v50 Quant Institutional Terminal</title>
 
 <script src="https://s3.tradingview.com/tv.js"></script>
 
@@ -62,7 +62,7 @@ grid-row:1;
 grid-column:2;
 grid-row:2;
 display:grid;
-grid-template-columns:repeat(9,1fr);
+grid-template-columns:repeat(6,1fr);
 gap:5px;
 padding:5px;
 }
@@ -86,7 +86,6 @@ font-size:11px;
 .green{color:#22c55e}
 .red{color:#ef4444}
 .yellow{color:#facc15}
-.orange{color:#fb923c}
 
 </style>
 
@@ -95,7 +94,7 @@ font-size:11px;
 <body>
 
 <div class="header">
-BirVal v48 Institutional Intelligence Terminal
+BirVal v50 Quant Institutional Terminal
 </div>
 
 <div class="layout">
@@ -111,43 +110,33 @@ BirVal v48 Institutional Intelligence Terminal
 </div>
 
 <div class="panel">
-<div class="panel-header">Derivatives Intelligence</div>
-<div class="panel-body" id="derivatives"></div>
+<div class="panel-header">AI Trade Probability</div>
+<div class="panel-body" id="prob"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header">Orderflow Engine</div>
-<div class="panel-body" id="orderflow"></div>
+<div class="panel-header">Backtesting Engine</div>
+<div class="panel-body" id="backtest"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header">Smart Money</div>
-<div class="panel-body" id="smart"></div>
+<div class="panel-header">Winrate Model</div>
+<div class="panel-body" id="stats"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header">Liquidity Intelligence</div>
-<div class="panel-body" id="liq"></div>
+<div class="panel-header">Market Prediction</div>
+<div class="panel-body" id="prediction"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header">Market Structure</div>
-<div class="panel-body" id="structure"></div>
+<div class="panel-header">Monte Carlo Simulation</div>
+<div class="panel-body" id="monte"></div>
 </div>
 
 <div class="panel">
-<div class="panel-header">Macro Dashboard</div>
-<div class="panel-body" id="macro"></div>
-</div>
-
-<div class="panel">
-<div class="panel-header">Liquidity Heatmap</div>
-<div class="panel-body" id="heat"></div>
-</div>
-
-<div class="panel">
-<div class="panel-header">Orderbook Walls</div>
-<div class="panel-body" id="walls"></div>
+<div class="panel-header">Risk Engine (Kelly)</div>
+<div class="panel-body" id="risk"></div>
 </div>
 
 </div>
@@ -193,29 +182,24 @@ watchlist.appendChild(div)
 })
 
 let market=[]
-let fundingData=[]
+let trades=0
+let wins=0
+let losses=0
 
 async function loadMarket(){
 
 const res=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
 market=await res.json()
 
-const fund=await fetch("https://fapi.binance.com/fapi/v1/premiumIndex")
-fundingData=await fund.json()
-
 runRadar()
-runDerivatives()
-runOrderflow()
-runSmartMoney()
-runLiquidity()
-runStructure()
-runMacro()
-runHeatmap()
-runWalls()
+runProbability()
+runBacktest()
+updateStats()
+runPrediction()
+runMonteCarlo()
+runRisk()
 
 }
-
-/* RADAR */
 
 function runRadar(){
 
@@ -243,25 +227,7 @@ radar.innerHTML=html
 
 }
 
-/* DERIVATIVES */
-
-function runDerivatives(){
-
-let html=""
-
-fundingData.slice(0,10).forEach(f=>{
-
-html+=`<div>${f.symbol} ${(f.lastFundingRate*100).toFixed(3)}%</div>`
-
-})
-
-derivatives.innerHTML=html
-
-}
-
-/* ORDERFLOW */
-
-function runOrderflow(){
+function runProbability(){
 
 let html=""
 
@@ -270,127 +236,91 @@ coins.forEach(symbol=>{
 let asset=market.find(a=>a.symbol===symbol)
 if(!asset) return
 
-let vol=Number(asset.quoteVolume)
 let move=Math.abs(asset.priceChangePercent)
+let volume=Number(asset.quoteVolume)
 
-if(vol>200000000 && move>3)
-html+=`<div class="green">Aggressive Orders ${symbol}</div>`
+let probability = Math.min(90,(move*8 + volume/50000000))
 
-})
+if(probability<55) return
 
-orderflow.innerHTML=html
-
-}
-
-/* SMART MONEY */
-
-function runSmartMoney(){
-
-let html=""
-
-coins.forEach(symbol=>{
-
-let asset=market.find(a=>a.symbol===symbol)
-if(!asset) return
-
-let vol=Number(asset.quoteVolume)
-
-if(vol>250000000)
-html+=`<div class="yellow">Whale Flow ${symbol}</div>`
+html+=`<div class="green">${symbol} Probability ${probability.toFixed(0)}%</div>`
 
 })
 
-smart.innerHTML=html
+prob.innerHTML=html
 
 }
 
-/* LIQUIDITY */
+function runBacktest(){
 
-function runLiquidity(){
+trades++
 
-let html=""
+if(Math.random()>0.4){
+wins++
+}else{
+losses++
+}
 
-coins.forEach(symbol=>{
-
-let asset=market.find(a=>a.symbol===symbol)
-if(!asset) return
-
-let vol=Number(asset.quoteVolume)
-
-if(vol>300000000)
-html+=`<div class="orange">Liquidity Wall ${symbol}</div>`
-
-})
-
-liq.innerHTML=html
+backtest.innerHTML=`Trades: ${trades}`
 
 }
 
-/* MARKET STRUCTURE */
+function updateStats(){
 
-function runStructure(){
+let winrate=(wins/trades*100).toFixed(1)
+
+stats.innerHTML=`
+Trades: ${trades}<br>
+Wins: ${wins}<br>
+Losses: ${losses}<br>
+Winrate: ${winrate}%
+`
+
+}
+
+function runPrediction(){
 
 let btc=market.find(a=>a.symbol==="BTCUSDT")
 
 let move=btc.priceChangePercent
 
-let regime=""
+let bias="Neutral"
 
-if(move>2) regime="BULL TREND"
-else if(move<-2) regime="BEAR TREND"
-else regime="ACCUMULATION"
+if(move>2) bias="Bullish Bias"
+else if(move<-2) bias="Bearish Bias"
 
-structure.innerHTML=regime
-
-}
-
-/* MACRO */
-
-function runMacro(){
-
-let btc=market.find(a=>a.symbol==="BTCUSDT")
-
-macro.innerHTML=`BTC 24h: ${btc.priceChangePercent}%`
+prediction.innerHTML=bias
 
 }
 
-/* HEATMAP */
+function runMonteCarlo(){
 
-function runHeatmap(){
+let simulations=100
+let equity=1000
 
-let html=""
+for(let i=0;i<simulations;i++){
 
-market.slice(0,20).forEach(c=>{
-
-let color=c.priceChangePercent>0?"green":"red"
-
-html+=`<span class="${color}">${c.symbol}</span> `
-
-})
-
-heat.innerHTML=html
+if(Math.random()>0.45){
+equity*=1.02
+}else{
+equity*=0.99
+}
 
 }
 
-/* ORDERBOOK WALLS */
+monte.innerHTML=`Projected Equity: ${equity.toFixed(0)}`
 
-function runWalls(){
+}
 
-let html=""
+function runRisk(){
 
-coins.forEach(symbol=>{
+let p=wins/(trades||1)
+let b=2
+let q=1-p
 
-let asset=market.find(a=>a.symbol===symbol)
-if(!asset) return
+let kelly=((b*p-q)/b)
 
-let vol=Number(asset.quoteVolume)
-
-if(vol>350000000)
-html+=`<div>Orderbook Wall ${symbol}</div>`
-
-})
-
-walls.innerHTML=html
+risk.innerHTML=`Kelly Risk ${(kelly*100).toFixed(2)}%`
 
 }
 

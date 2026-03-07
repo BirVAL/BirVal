@@ -4,88 +4,42 @@
 <head>
 
 <meta charset="UTF-8">
-<title>BirVal v50 Quant Institutional Terminal</title>
+<title>BirVal Quant Terminal</title>
 
 <script src="https://s3.tradingview.com/tv.js"></script>
+
+<link
+href="https://cdn.jsdelivr.net/npm/gridstack@8.2.5/dist/gridstack.min.css"
+rel="stylesheet"/>
+
+<script
+src="https://cdn.jsdelivr.net/npm/gridstack@8.2.5/dist/gridstack-all.js">
+</script>
 
 <style>
 
 body{
-margin:0;
 background:#0b0f1c;
 color:white;
 font-family:monospace;
+margin:0
 }
 
 .header{
-text-align:center;
 padding:6px;
-font-size:18px;
-color:#93c5fd;
-border-bottom:1px solid #60a5fa;
+text-align:center;
+border-bottom:1px solid #60a5fa
 }
 
-.layout{
-display:grid;
-grid-template-columns:200px auto;
-grid-template-rows:520px auto;
-height:100vh;
-}
-
-.watch{
-grid-column:1;
-grid-row:1;
-overflow:auto;
-border-right:1px solid #60a5fa;
-background:#0f1629;
-padding:5px;
-}
-
-.coin{
-border:1px solid #60a5fa;
-padding:4px;
-margin-bottom:4px;
-cursor:pointer;
-font-size:11px;
-}
-
-.coin:hover{
-background:#1b2748;
-}
-
-.chart{
-grid-column:2;
-grid-row:1;
-}
-
-.modules{
-grid-column:2;
-grid-row:2;
-display:grid;
-grid-template-columns:repeat(6,1fr);
-gap:5px;
-padding:5px;
+.grid-stack{
+background:#0f1629
 }
 
 .panel{
+background:#111827;
 border:1px solid #60a5fa;
-background:#0f1629;
+padding:5px
 }
-
-.panel-header{
-padding:4px;
-color:#93c5fd;
-border-bottom:1px solid #60a5fa;
-}
-
-.panel-body{
-padding:5px;
-font-size:11px;
-}
-
-.green{color:#22c55e}
-.red{color:#ef4444}
-.yellow{color:#facc15}
 
 </style>
 
@@ -94,49 +48,51 @@ font-size:11px;
 <body>
 
 <div class="header">
-BirVal v50 Quant Institutional Terminal
+
+BirVal Quant Terminal
+
 </div>
 
-<div class="layout">
+<div class="grid-stack">
 
-<div class="watch" id="watchlist"></div>
-<div class="chart" id="chart"></div>
+<div class="grid-stack-item"
+gs-w="4"
+gs-h="3">
 
-<div class="modules">
+<div class="grid-stack-item-content panel">
 
-<div class="panel">
-<div class="panel-header">Opportunity Radar</div>
-<div class="panel-body" id="radar"></div>
+<h4>Market Stream</h4>
+
+<div id="stream"></div>
+
 </div>
 
-<div class="panel">
-<div class="panel-header">AI Trade Probability</div>
-<div class="panel-body" id="prob"></div>
 </div>
 
-<div class="panel">
-<div class="panel-header">Backtesting Engine</div>
-<div class="panel-body" id="backtest"></div>
+<div class="grid-stack-item"
+gs-w="4"
+gs-h="3">
+
+<div class="grid-stack-item-content panel">
+
+<h4>Dataset Engine</h4>
+
+<div id="dataset"></div>
+
 </div>
 
-<div class="panel">
-<div class="panel-header">Winrate Model</div>
-<div class="panel-body" id="stats"></div>
 </div>
 
-<div class="panel">
-<div class="panel-header">Market Prediction</div>
-<div class="panel-body" id="prediction"></div>
-</div>
+<div class="grid-stack-item"
+gs-w="4"
+gs-h="3">
 
-<div class="panel">
-<div class="panel-header">Monte Carlo Simulation</div>
-<div class="panel-body" id="monte"></div>
-</div>
+<div class="grid-stack-item-content panel">
 
-<div class="panel">
-<div class="panel-header">Risk Engine (Kelly)</div>
-<div class="panel-body" id="risk"></div>
+<h4>Market Regime</h4>
+
+<div id="regime"></div>
+
 </div>
 
 </div>
@@ -145,190 +101,69 @@ BirVal v50 Quant Institutional Terminal
 
 <script>
 
-let widget
+let grid = GridStack.init()
 
-function loadChart(symbol){
+/* WEBSOCKET STREAM */
 
-widget=new TradingView.widget({
-symbol:symbol,
-interval:"60",
-container_id:"chart",
-theme:"dark",
-autosize:true
-})
+const socket = new WebSocket(
+"wss://fstream.binance.com/ws/btcusdt@trade"
+)
+
+socket.onmessage = function(event){
+
+const data = JSON.parse(event.data)
+
+let price = data.p
+
+document.getElementById("stream").innerHTML =
+"BTC Price: "+price
 
 }
 
-function changeSymbol(symbol){
+/* DATASET */
 
-loadChart("BINANCE:"+symbol)
+async function loadHistorical(){
+
+const res = await fetch(
+"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=200"
+)
+
+const data = await res.json()
+
+document.getElementById("dataset").innerHTML =
+"Candles loaded: "+data.length
 
 }
 
-loadChart("BINANCE:BTCUSDT")
+loadHistorical()
 
-const coins=[
-"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","DOGEUSDT",
-"TONUSDT","LINKUSDT","TRXUSDT","NEARUSDT","APTUSDT",
-"INJUSDT","ARBUSDT","SUIUSDT","AAVEUSDT","HBARUSDT","TAOUSDT"
-]
-
-coins.forEach(symbol=>{
-let div=document.createElement("div")
-div.className="coin"
-div.innerText=symbol
-div.onclick=()=>changeSymbol(symbol)
-watchlist.appendChild(div)
-})
-
-let market=[]
-let trades=0
-let wins=0
-let losses=0
+/* MARKOV REGIME */
 
 async function loadMarket(){
 
-const res=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr")
-market=await res.json()
+const res = await fetch(
+"https://fapi.binance.com/fapi/v1/ticker/24hr"
+)
 
-runRadar()
-runProbability()
-runBacktest()
-updateStats()
-runPrediction()
-runMonteCarlo()
-runRisk()
+const market = await res.json()
 
-}
+let btc = market.find(a=>a.symbol=="BTCUSDT")
 
-function runRadar(){
+let change = btc.priceChangePercent
 
-let html=""
+let regime = "SIDEWAYS"
 
-coins.forEach(symbol=>{
+if(change>2) regime="BULL TREND"
+if(change<-2) regime="BEAR TREND"
 
-let asset=market.find(a=>a.symbol===symbol)
-if(!asset) return
-
-let move=Math.abs(asset.priceChangePercent)
-let volume=Number(asset.quoteVolume)
-
-if(volume<120000000) return
-
-let score=move*10 + volume/10000000
-
-if(score<40) return
-
-html+=`<div class="yellow">${symbol} Score ${score.toFixed(0)}</div>`
-
-})
-
-radar.innerHTML=html
+document.getElementById("regime").innerHTML = regime
 
 }
 
-function runProbability(){
-
-let html=""
-
-coins.forEach(symbol=>{
-
-let asset=market.find(a=>a.symbol===symbol)
-if(!asset) return
-
-let move=Math.abs(asset.priceChangePercent)
-let volume=Number(asset.quoteVolume)
-
-let probability = Math.min(90,(move*8 + volume/50000000))
-
-if(probability<55) return
-
-html+=`<div class="green">${symbol} Probability ${probability.toFixed(0)}%</div>`
-
-})
-
-prob.innerHTML=html
-
-}
-
-function runBacktest(){
-
-trades++
-
-if(Math.random()>0.4){
-wins++
-}else{
-losses++
-}
-
-backtest.innerHTML=`Trades: ${trades}`
-
-}
-
-function updateStats(){
-
-let winrate=(wins/trades*100).toFixed(1)
-
-stats.innerHTML=`
-Trades: ${trades}<br>
-Wins: ${wins}<br>
-Losses: ${losses}<br>
-Winrate: ${winrate}%
-`
-
-}
-
-function runPrediction(){
-
-let btc=market.find(a=>a.symbol==="BTCUSDT")
-
-let move=btc.priceChangePercent
-
-let bias="Neutral"
-
-if(move>2) bias="Bullish Bias"
-else if(move<-2) bias="Bearish Bias"
-
-prediction.innerHTML=bias
-
-}
-
-function runMonteCarlo(){
-
-let simulations=100
-let equity=1000
-
-for(let i=0;i<simulations;i++){
-
-if(Math.random()>0.45){
-equity*=1.02
-}else{
-equity*=0.99
-}
-
-}
-
-monte.innerHTML=`Projected Equity: ${equity.toFixed(0)}`
-
-}
-
-function runRisk(){
-
-let p=wins/(trades||1)
-let b=2
-let q=1-p
-
-let kelly=((b*p-q)/b)
-
-risk.innerHTML=`Kelly Risk ${(kelly*100).toFixed(2)}%`
-
-}
-
-loadMarket()
-
-setInterval(loadMarket,30000)
+setInterval(loadMarket,5000)
 
 </script>
 
 </body>
+
 </html>

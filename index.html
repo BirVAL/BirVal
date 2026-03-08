@@ -3,33 +3,20 @@
 
 <head>
 
-<meta charset="UTF-8">
 <title>BirVal Quant Terminal</title>
 
 <style>
 
 body{
-background:#0b0f1c;
-color:white;
+background:#020c1b;
+color:#8ab4ff;
 font-family:monospace;
-margin:0;
-}
-
-.header{
-padding:6px;
-text-align:center;
-border-bottom:1px solid #60a5fa;
-color:#93c5fd;
 }
 
 .panel{
-border:1px solid #60a5fa;
-margin:6px;
-padding:6px;
-}
-
-.status{
-color:#9ca3af;
+border:1px solid #3a7bd5;
+margin:10px;
+padding:10px;
 }
 
 </style>
@@ -38,166 +25,36 @@ color:#9ca3af;
 
 <body>
 
-<div class="header">
-BirVal Quant Terminal
-</div>
+<h2>BirVal Quant Terminal</h2>
 
 <div class="panel">
 
-<b>Market Stream</b>
-
-<div id="streamPanel" class="status">
-Connecting...
-</div>
+<h3>Market Stream</h3>
+<div id="streamPanel">Connecting...</div>
 
 </div>
 
 <div class="panel">
 
-<b>Dataset Engine</b>
-
-<div id="datasetPanel" class="status">
-Loading dataset...
-</div>
+<h3>Dataset Engine</h3>
+<div id="datasetPanel">Loading dataset...</div>
 
 </div>
 
 <div class="panel">
 
-<b>Market Regime</b>
-
-<div id="regimePanel" class="status">
-Calculating...
-</div>
+<h3>Market Regime</h3>
+<div id="regimePanel">Calculating...</div>
 
 </div>
 
-<script>
+<script type="module">
 
-/* =========================
-   BIRVAL DATA ENGINE V2
-========================= */
+import {startDataEngine} from "./data/data_engine.js"
 
-const streamPanel = document.getElementById("streamPanel")
-const datasetPanel = document.getElementById("datasetPanel")
-const regimePanel = document.getElementById("regimePanel")
-
-/* =========================
-   MARKET STREAM
-========================= */
-
-function startStream(){
-
-try{
-
-const socket = new WebSocket(
-"wss://stream.binance.com:9443/ws/btcusdt@trade"
-)
-
-socket.onopen = function(){
-streamPanel.innerHTML="Stream connected"
-}
-
-socket.onmessage = function(event){
-
-const data = JSON.parse(event.data)
-
-let price = data.p
-let qty = data.q
-
-streamPanel.innerHTML =
-"BTC Price: "+price+
-"<br>Trade Size: "+qty
-
-}
-
-socket.onerror = function(){
-streamPanel.innerHTML="Stream error"
-}
-
-socket.onclose = function(){
-streamPanel.innerHTML="Reconnecting..."
-setTimeout(startStream,3000)
-}
-
-}catch(e){
-
-streamPanel.innerHTML="WebSocket failed"
-
-}
-
-}
-
-/* =========================
-   DATASET ENGINE
-========================= */
-
-async function loadDataset(){
-
-try{
-
-const res = await fetch(
-"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=200"
-)
-
-const data = await res.json()
-
-datasetPanel.innerHTML =
-"Candles loaded: "+data.length
-
-}catch(e){
-
-datasetPanel.innerHTML="Dataset load error"
-
-}
-
-}
-
-/* =========================
-   MARKET REGIME ENGINE
-========================= */
-
-async function loadRegime(){
-
-try{
-
-const res = await fetch(
-"https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
-)
-
-const btc = await res.json()
-
-let change = parseFloat(btc.priceChangePercent)
-
-let regime="SIDEWAYS"
-
-if(change > 2) regime="BULL TREND"
-if(change < -2) regime="BEAR TREND"
-
-regimePanel.innerHTML =
-"BTC 24h: "+change+"%"+
-"<br>"+regime
-
-}catch(e){
-
-regimePanel.innerHTML="Regime error"
-
-}
-
-}
-
-/* =========================
-   START ENGINE
-========================= */
-
-startStream()
-loadDataset()
-loadRegime()
-
-setInterval(loadRegime,5000)
+startDataEngine()
 
 </script>
 
 </body>
-
 </html>

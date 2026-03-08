@@ -4,6 +4,8 @@ import {startRegime} from "../models/regime_model.js"
 
 import {storeTrade, storeCandle} from "../storage/market_store.js"
 
+import { evaluateRisk } from "../risk/risk_engine.js"
+
 
 export function startDataEngine(){
 

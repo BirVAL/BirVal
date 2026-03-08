@@ -6,8 +6,6 @@
 <meta charset="UTF-8">
 <title>BirVal Quant Terminal</title>
 
-<script src="https://s3.tradingview.com/tv.js"></script>
-
 <link href="https://cdn.jsdelivr.net/npm/gridstack@8.2.5/dist/gridstack.min.css" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/gridstack@8.2.5/dist/gridstack-all.js"></script>
 
@@ -27,14 +25,10 @@ border-bottom:1px solid #60a5fa;
 color:#93c5fd;
 }
 
-.grid-stack{
-background:#0f1629;
-padding:5px;
-}
-
 .panel{
 background:#111827;
 border:1px solid #60a5fa;
+margin:6px;
 }
 
 .panel-header{
@@ -46,7 +40,6 @@ color:#93c5fd;
 
 .panel-content{
 padding:8px;
-display:block;
 font-size:12px;
 }
 
@@ -62,56 +55,40 @@ BirVal Quant Terminal
 
 </div>
 
-<div class="grid-stack">
+<div class="panel">
 
-<div class="grid-stack-item" gs-w="4" gs-h="2">
-<div class="grid-stack-item-content panel">
-
-<div class="panel-header" onclick="togglePanel('streamPanel')">
+<div class="panel-header">
 Market Stream
 </div>
 
 <div class="panel-content" id="streamPanel">
-
-Waiting data...
-
+Connecting...
 </div>
 
 </div>
-</div>
 
 
-<div class="grid-stack-item" gs-w="4" gs-h="2">
-<div class="grid-stack-item-content panel">
+<div class="panel">
 
-<div class="panel-header" onclick="togglePanel('datasetPanel')">
+<div class="panel-header">
 Dataset Engine
 </div>
 
 <div class="panel-content" id="datasetPanel">
-
 Loading dataset...
-
 </div>
 
 </div>
-</div>
 
 
-<div class="grid-stack-item" gs-w="4" gs-h="2">
-<div class="grid-stack-item-content panel">
+<div class="panel">
 
-<div class="panel-header" onclick="togglePanel('regimePanel')">
+<div class="panel-header">
 Market Regime
 </div>
 
 <div class="panel-content" id="regimePanel">
-
 Calculating...
-
-</div>
-
-</div>
 </div>
 
 </div>
@@ -119,34 +96,14 @@ Calculating...
 
 <script>
 
-/* GRIDSTACK */
+/* MARKET STREAM */
 
-let grid = GridStack.init({
-float:true
-})
+function startStream(){
 
-/* PANEL TOGGLE */
-
-function togglePanel(id){
-
-let el = document.getElementById(id)
-
-if(el.style.display === "none"){
-
-el.style.display="block"
-
-}else{
-
-el.style.display="none"
-
-}
-
-}
-
-/* WEBSOCKET STREAM */
+try{
 
 const socket = new WebSocket(
-"wss://fstream.binance.com/ws/btcusdt@trade"
+"wss://stream.binance.com:9443/ws/btcusdt@trade"
 )
 
 socket.onmessage = function(event){
@@ -157,55 +114,92 @@ let price = data.p
 let qty = data.q
 
 document.getElementById("streamPanel").innerHTML =
-
-"BTC Price: "+price+
-"<br>Trade Size: "+qty
+"BTC Price: "+price+"<br>Trade Size: "+qty
 
 }
 
+socket.onerror = function(){
+
+document.getElementById("streamPanel").innerHTML =
+"Stream connection error"
+
+}
+
+}catch(e){
+
+document.getElementById("streamPanel").innerHTML =
+"WebSocket failed"
+
+}
+
+}
+
+startStream()
+
+
+
 /* DATASET ENGINE */
 
-async function loadHistorical(){
+async function loadDataset(){
+
+try{
 
 const res = await fetch(
-"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=200"
+"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=100"
 )
 
 const data = await res.json()
 
 document.getElementById("datasetPanel").innerHTML =
-
 "Candles loaded: "+data.length
+
+}catch(e){
+
+document.getElementById("datasetPanel").innerHTML =
+"Dataset load error"
 
 }
 
-loadHistorical()
+}
+
+loadDataset()
 
 
-/* MARKET REGIME ENGINE */
 
-async function loadMarket(){
+/* MARKET REGIME */
+
+async function loadRegime(){
+
+try{
 
 const res = await fetch(
-"https://fapi.binance.com/fapi/v1/ticker/24hr"
+"https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
 )
 
-const market = await res.json()
+const btc = await res.json()
 
-let btc = market.find(a=>a.symbol=="BTCUSDT")
-
-let change = btc.priceChangePercent
+let change = parseFloat(btc.priceChangePercent)
 
 let regime = "SIDEWAYS"
 
-if(change>2) regime="BULL TREND"
-if(change<-2) regime="BEAR TREND"
+if(change > 2) regime = "BULL TREND"
+if(change < -2) regime = "BEAR TREND"
 
-document.getElementById("regimePanel").innerHTML = regime
+document.getElementById("regimePanel").innerHTML =
+"BTC 24h: "+change+"%<br>"+regime
+
+}catch(e){
+
+document.getElementById("regimePanel").innerHTML =
+"Regime load error"
 
 }
 
-setInterval(loadMarket,5000)
+}
+
+loadRegime()
+
+setInterval(loadRegime,5000)
 
 </script>
 

@@ -7,6 +7,7 @@ export function calculateVolatility(prices) {
     let returns = []
 
     for (let i = 1; i < prices.length; i++) {
+        if (prices[i - 1] === 0) continue
         let r = (prices[i] - prices[i - 1]) / prices[i - 1]
         returns.push(r)
     }

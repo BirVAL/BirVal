@@ -1,4 +1,4 @@
-export async function loadDataset(panel){
+export async function loadDataset(panel, callback){
 
 try{
 
@@ -10,6 +10,16 @@ const data = await res.json()
 
 panel.innerHTML =
 "Candles loaded: "+data.length
+
+if(callback){
+
+data.forEach(candle => {
+
+callback(candle)
+
+})
+
+}
 
 }catch(e){
 

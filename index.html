@@ -53,7 +53,17 @@ Market Regime
 <div id="regimePanel">Calculating...</div>
 </div>
 
-<script type="module" src="data/data_engine.js"></script>
+<script type="module">
+
+import { startStream } from "./data/websocket_stream.js"
+import { loadDataset } from "./data/dataset_loader.js"
+import { startRegime } from "./models/regime_model.js"
+
+startStream()
+loadDataset()
+startRegime()
+
+</script>
 
 </body>
 

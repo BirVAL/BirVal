@@ -1,4 +1,4 @@
-export function startStream(panel){
+export function startStream(panel, callback){
 
 function connect(){
 
@@ -9,7 +9,9 @@ const socket = new WebSocket(
 )
 
 socket.onopen = function(){
+
 panel.innerHTML="Stream connected"
+
 }
 
 socket.onmessage = function(event){
@@ -20,15 +22,26 @@ panel.innerHTML =
 "BTC Price: "+data.p+
 "<br>Trade Size: "+data.q
 
+if(callback){
+
+callback(data)
+
+}
+
 }
 
 socket.onerror = function(){
+
 panel.innerHTML="Stream error"
+
 }
 
 socket.onclose = function(){
+
 panel.innerHTML="Reconnecting..."
+
 setTimeout(connect,3000)
+
 }
 
 }catch(e){

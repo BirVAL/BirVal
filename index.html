@@ -6,9 +6,6 @@
 <meta charset="UTF-8">
 <title>BirVal Quant Terminal</title>
 
-<link href="https://cdn.jsdelivr.net/npm/gridstack@8.2.5/dist/gridstack.min.css" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/gridstack@8.2.5/dist/gridstack-all.js"></script>
-
 <style>
 
 body{
@@ -26,21 +23,9 @@ color:#93c5fd;
 }
 
 .panel{
-background:#111827;
 border:1px solid #60a5fa;
 margin:6px;
-}
-
-.panel-header{
 padding:6px;
-cursor:pointer;
-border-bottom:1px solid #60a5fa;
-color:#93c5fd;
-}
-
-.panel-content{
-padding:8px;
-font-size:12px;
 }
 
 </style>
@@ -50,158 +35,27 @@ font-size:12px;
 <body>
 
 <div class="header">
-
 BirVal Quant Terminal
-
 </div>
 
 <div class="panel">
-
-<div class="panel-header">
 Market Stream
+<div id="streamPanel">Connecting...</div>
 </div>
-
-<div class="panel-content" id="streamPanel">
-Connecting...
-</div>
-
-</div>
-
 
 <div class="panel">
-
-<div class="panel-header">
 Dataset Engine
+<div id="datasetPanel">Loading dataset...</div>
 </div>
-
-<div class="panel-content" id="datasetPanel">
-Loading dataset...
-</div>
-
-</div>
-
 
 <div class="panel">
-
-<div class="panel-header">
 Market Regime
+<div id="regimePanel">Calculating...</div>
 </div>
 
-<div class="panel-content" id="regimePanel">
-Calculating...
-</div>
-
-</div>
-
-
-<script>
-
-/* MARKET STREAM */
-
-function startStream(){
-
-try{
-
-const socket = new WebSocket(
-"wss://stream.binance.com:9443/ws/btcusdt@trade"
-)
-
-socket.onmessage = function(event){
-
-const data = JSON.parse(event.data)
-
-let price = data.p
-let qty = data.q
-
-document.getElementById("streamPanel").innerHTML =
-"BTC Price: "+price+"<br>Trade Size: "+qty
-
-}
-
-socket.onerror = function(){
-
-document.getElementById("streamPanel").innerHTML =
-"Stream connection error"
-
-}
-
-}catch(e){
-
-document.getElementById("streamPanel").innerHTML =
-"WebSocket failed"
-
-}
-
-}
-
-startStream()
-
-
-
-/* DATASET ENGINE */
-
-async function loadDataset(){
-
-try{
-
-const res = await fetch(
-"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=100"
-)
-
-const data = await res.json()
-
-document.getElementById("datasetPanel").innerHTML =
-"Candles loaded: "+data.length
-
-}catch(e){
-
-document.getElementById("datasetPanel").innerHTML =
-"Dataset load error"
-
-}
-
-}
-
-loadDataset()
-
-
-
-/* MARKET REGIME */
-
-async function loadRegime(){
-
-try{
-
-const res = await fetch(
-"https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
-)
-
-const btc = await res.json()
-
-let change = parseFloat(btc.priceChangePercent)
-
-let regime = "SIDEWAYS"
-
-if(change > 2) regime = "BULL TREND"
-if(change < -2) regime = "BEAR TREND"
-
-document.getElementById("regimePanel").innerHTML =
-"BTC 24h: "+change+"%<br>"+regime
-
-}catch(e){
-
-document.getElementById("regimePanel").innerHTML =
-"Regime load error"
-
-}
-
-}
-
-loadRegime()
-
-setInterval(loadRegime,5000)
-
-</script>
+<script src="data/websocket_stream.js"></script>
+<script src="data/dataset_loader.js"></script>
+<script src="models/regime_model.js"></script>
 
 </body>
 

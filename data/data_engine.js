@@ -6,6 +6,9 @@ import {storeTrade, storeCandle} from "../storage/market_store.js"
 
 import { evaluateRisk } from "../risk/risk_engine.js"
 
+import { generateSignal } from "../strategy/strategy_engine.js"
+import { executeOrder } from "../execution/execution_engine.js"
+
 
 export function startDataEngine(){
 

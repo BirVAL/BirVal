@@ -1,23 +1,21 @@
 export function updateDashboard(data){
 
+    const panel = document.getElementById("dashboardPanel")
+
+    if(!panel) return
+
     const capital = data.capital
-    const positionsOpen = data.positionsOpen
-    const realizedPnL = data.realizedPnL
+    const positions = data.positionsOpen
+    const pnl = data.realizedPnL
 
+    panel.innerHTML = `
 
+Capital: ${capital.toFixed(2)}
+<br>
+Open Positions: ${positions}
+<br>
+Realized PnL: ${pnl.toFixed(2)}
 
-    const dashboard = {
-
-        capital: capital,
-        positions: positionsOpen,
-        realizedPnL: realizedPnL,
-        timestamp: Date.now()
-
-    }
-
-
-
-    console.log("DASHBOARD UPDATE")
-    console.log(dashboard)
+`
 
 }

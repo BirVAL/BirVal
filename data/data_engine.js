@@ -15,191 +15,183 @@ import { updateDashboard } from "../visualization/dashboard.js"
 
 export function startDataEngine(){
 
-    const streamPanel = document.getElementById("streamPanel")
-    const datasetPanel = document.getElementById("datasetPanel")
-    const regimePanel = document.getElementById("regimePanel")
+const streamPanel = document.getElementById("streamPanel")
+const datasetPanel = document.getElementById("datasetPanel")
+const regimePanel = document.getElementById("regimePanel")
 
-    const portfolio = new PortfolioManager(10000)
+const portfolio = new PortfolioManager(10000)
 
 
 
-    /*
-    ========================
-    MARKET STREAM
-    ========================
-    */
+/*
+====================
+MARKET STREAM
+====================
+*/
 
-    startStream(streamPanel, (trade)=>{
+startStream(streamPanel,(trade)=>{
 
-        storeTrade(trade)
+storeTrade(trade)
 
-        const price = trade.price
+const price = trade.price
 
 
 
-        /*
-        ========================
-        BUILD ANALYSIS DATA
-        ========================
-        */
+/*
+====================
+POSITION MANAGER
+====================
+*/
 
-        const data = {
+for(let i = portfolio.positions.length - 1; i >= 0; i--){
 
-            mlScore: Math.random() * 2 - 1,
+const pos = portfolio.positions[i]
 
-            orderflow: {
-                buyPressure: Math.random(),
-                sellPressure: Math.random()
-            },
+if(price >= pos.target || price <= pos.stop){
 
-            liquidity: {
-                liquidityPressure: Math.random() * 0.2 - 0.1
-            }
+portfolio.closePosition(i,price)
 
-        }
+}
 
+}
 
 
-        /*
-        ========================
-        POSITION MANAGER
-        ========================
-        */
 
-        for (let i = portfolio.positions.length - 1; i >= 0; i--) {
+/*
+====================
+BUILD ANALYSIS DATA
+====================
+*/
 
-            const pos = portfolio.positions[i]
+const data = {
 
-            if (price >= pos.target || price <= pos.stop) {
+mlScore: Math.random()*2 - 1,
 
-                const pnl = portfolio.closePosition(i, price)
+orderflow:{
+buyPressure: Math.random(),
+sellPressure: Math.random()
+},
 
-                console.log("POSITION CLOSED")
-                console.log("PnL:", pnl)
+liquidity:{
+liquidityPressure: Math.random()*0.2 - 0.1
+}
 
-            }
+}
 
-        }
 
 
+/*
+====================
+STRATEGY ENGINE
+====================
+*/
 
-        /*
-        ========================
-        STRATEGY ENGINE
-        ========================
-        */
+const signal = generateSignal(data)
 
-        const signal = generateSignal(data)
+if(signal === "NO TRADE") return
 
-        if(signal === "NO TRADE") return
 
 
+/*
+====================
+TRADE SETUP
+====================
+*/
 
-        /*
-        ========================
-        TRADE SETUP
-        ========================
-        */
+const tradeSetup = {
 
-        const tradeSetup = {
+entry: price,
 
-            entry: price,
+stop: price - 5,
 
-            stop: price - 100,
+target: price + 5,
 
-            target: price + 200,
+capital: portfolio.capital,
 
-            capital: portfolio.capital,
+riskPercent: 0.01
 
-            riskPercent: 0.01
+}
 
-        }
 
 
+/*
+====================
+RISK ENGINE
+====================
+*/
 
-        /*
-        ========================
-        RISK ENGINE
-        ========================
-        */
+const risk = evaluateRisk(tradeSetup)
 
-        const risk = evaluateRisk(tradeSetup)
 
 
+/*
+====================
+EXECUTION ENGINE
+====================
+*/
 
-        /*
-        ========================
-        EXECUTION ENGINE
-        ========================
-        */
+const order = executeOrder({
 
-        const order = executeOrder({
+symbol:"BTCUSDT",
 
-            symbol: "BTCUSDT",
+side: signal === "LONG" ? "BUY" : "SELL",
 
-            side: signal === "LONG" ? "BUY" : "SELL",
+size: risk.positionSize,
 
-            size: risk.positionSize,
+entry: tradeSetup.entry,
 
-            entry: tradeSetup.entry,
+stop: tradeSetup.stop,
 
-            stop: tradeSetup.stop,
+target: tradeSetup.target
 
-            target: tradeSetup.target
+})
 
-        })
 
 
+portfolio.openPosition(order)
 
-        portfolio.openPosition(order)
 
 
+/*
+====================
+PORTFOLIO UPDATE
+====================
+*/
 
-        console.log("EXECUTED ORDER")
-        console.log(order)
+const stats = portfolio.getStats()
 
+updateDashboard({
 
+capital: stats.capital,
+positionsOpen: stats.positionsOpen,
+realizedPnL: stats.realizedPnL
 
-        /*
-        ========================
-        PORTFOLIO UPDATE
-        ========================
-        */
+})
 
-        const stats = portfolio.getStats()
+})
 
-        updateDashboard({
 
-            capital: stats.capital,
-            positionsOpen: stats.positionsOpen,
-            realizedPnL: stats.realizedPnL
 
-        })
+/*
+====================
+DATASET ENGINE
+====================
+*/
 
-    })
+loadDataset(datasetPanel,(candle)=>{
 
+storeCandle(candle)
 
+})
 
-    /*
-    ========================
-    DATASET ENGINE
-    ========================
-    */
 
-    loadDataset(datasetPanel, (candle)=>{
 
-        storeCandle(candle)
+/*
+====================
+REGIME ENGINE
+====================
+*/
 
-    })
-
-
-
-    /*
-    ========================
-    REGIME ENGINE
-    ========================
-    */
-
-    startRegime(regimePanel)
+startRegime(regimePanel)
 
 }

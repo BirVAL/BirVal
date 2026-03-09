@@ -12,6 +12,13 @@ import { PortfolioManager } from "../portfolio/portfolio_manager.js"
 
 import { updateDashboard } from "../visualization/dashboard.js"
 
+const stats = portfolio.getStats()
+
+updateDashboard({
+    capital: stats.capital,
+    positionsOpen: stats.positionsOpen,
+    realizedPnL: stats.realizedPnL
+})
 
 
 export function startDataEngine(){

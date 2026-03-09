@@ -8,24 +8,34 @@
 <style>
 
 body{
-background:#020c1b;
-color:#8ab4ff;
-font-family:monospace;
+    background:#061321;
+    color:#9cc9ff;
+    font-family: monospace;
+    padding:20px;
+}
+
+h2{
+    color:#8fc1ff;
 }
 
 .panel{
-border:1px solid #3a7bd5;
-margin:10px;
-padding:10px;
+
+    border:1px solid #1c395a;
+    padding:15px;
+    margin-bottom:20px;
+
 }
 
 </style>
 
 </head>
 
+
 <body>
 
 <h2>BirVal Quant Terminal</h2>
+
+
 
 <div class="panel">
 
@@ -42,35 +52,64 @@ Realized PnL: --
 </div>
 
 </div>
-  
+
+
+
 <div class="panel">
 
 <h3>Market Stream</h3>
-<div id="streamPanel">Connecting...</div>
+
+<div id="streamPanel">
+
+Connecting...
 
 </div>
+
+</div>
+
+
 
 <div class="panel">
 
 <h3>Dataset Engine</h3>
-<div id="datasetPanel">Loading dataset...</div>
+
+<div id="datasetPanel">
+
+Loading dataset...
 
 </div>
+
+</div>
+
+
 
 <div class="panel">
 
 <h3>Market Regime</h3>
-<div id="regimePanel">Calculating...</div>
+
+<div id="regimePanel">
+
+Calculating...
 
 </div>
 
+</div>
+
+
+
 <script type="module">
 
-import {startDataEngine} from "./data/data_engine.js"
+import { startDataEngine } from "./data/data_engine.js";
 
-startDataEngine()
+window.onload = () => {
+
+    startDataEngine();
+
+};
 
 </script>
 
+
 </body>
+
 </html>

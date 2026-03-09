@@ -8,6 +8,8 @@ import { evaluateRisk } from "../risk/risk_engine.js"
 import { generateSignal } from "../strategy/strategy_engine.js"
 import { executeOrder } from "../execution/execution_engine.js"
 
+import { PortfolioManager } from "../portfolio/portfolio_manager.js"
+
 
 
 export function startDataEngine(){
@@ -15,6 +17,16 @@ export function startDataEngine(){
     const streamPanel = document.getElementById("streamPanel")
     const datasetPanel = document.getElementById("datasetPanel")
     const regimePanel = document.getElementById("regimePanel")
+
+
+
+    /*
+    =============================
+    PORTFOLIO MANAGER
+    =============================
+    */
+
+    const portfolio = new PortfolioManager(10000)
 
 
 
@@ -79,7 +91,7 @@ export function startDataEngine(){
             stop: price - 100,
             target: price + 200,
 
-            capital: 10000,
+            capital: portfolio.capital,
             riskPercent: 0.01
 
         }
@@ -118,8 +130,21 @@ export function startDataEngine(){
 
 
 
+        /*
+        =============================
+        PORTFOLIO UPDATE
+        =============================
+        */
+
+        portfolio.update(order)
+
+
+
         console.log("EXECUTED ORDER")
         console.log(order)
+
+        console.log("PORTFOLIO STATUS")
+        console.log(portfolio)
 
     })
 

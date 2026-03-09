@@ -84,6 +84,26 @@ export function startDataEngine(){
 
         const signal = generateSignal(data)
 
+
+        /*
+========================
+MANAGE OPEN POSITIONS
+========================
+*/
+
+for (let i = portfolio.positions.length - 1; i >= 0; i--) {
+
+    const pos = portfolio.positions[i]
+
+    if (price >= pos.target || price <= pos.stop) {
+
+        portfolio.closePosition(i, price)
+
+    }
+
+}
+
+        
         if(signal === "NO TRADE") return
 
 

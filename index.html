@@ -101,11 +101,27 @@ Calculating...
 
 import { startDataEngine } from "./data/data_engine.js";
 
-window.onload = () => {
+console.log("BirVal Terminal loading...");
 
-    startDataEngine();
+document.addEventListener("DOMContentLoaded", () => {
 
-};
+    console.log("DOM loaded");
+
+    try{
+
+        startDataEngine();
+
+        console.log("Data Engine started");
+
+    }
+
+    catch(error){
+
+        console.error("ENGINE ERROR:", error);
+
+    }
+
+});
 
 </script>
 

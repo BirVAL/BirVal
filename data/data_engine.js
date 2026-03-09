@@ -9,16 +9,8 @@ import { generateSignal } from "../strategy/strategy_engine.js"
 import { executeOrder } from "../execution/execution_engine.js"
 
 import { PortfolioManager } from "../portfolio/portfolio_manager.js"
-
 import { updateDashboard } from "../visualization/dashboard.js"
 
-const stats = portfolio.getStats()
-
-updateDashboard({
-    capital: stats.capital,
-    positionsOpen: stats.positionsOpen,
-    realizedPnL: stats.realizedPnL
-})
 
 
 export function startDataEngine(){
@@ -27,22 +19,14 @@ export function startDataEngine(){
     const datasetPanel = document.getElementById("datasetPanel")
     const regimePanel = document.getElementById("regimePanel")
 
-
-
-    /*
-    =============================
-    PORTFOLIO MANAGER
-    =============================
-    */
-
     const portfolio = new PortfolioManager(10000)
 
 
 
     /*
-    =============================
+    ========================
     MARKET STREAM
-    =============================
+    ========================
     */
 
     startStream(streamPanel, (trade)=>{
@@ -54,9 +38,9 @@ export function startDataEngine(){
 
 
         /*
-        =============================
+        ========================
         BUILD ANALYSIS DATA
-        =============================
+        ========================
         */
 
         const data = {
@@ -77,50 +61,56 @@ export function startDataEngine(){
 
 
         /*
-        =============================
+        ========================
+        POSITION MANAGER
+        ========================
+        */
+
+        for (let i = portfolio.positions.length - 1; i >= 0; i--) {
+
+            const pos = portfolio.positions[i]
+
+            if (price >= pos.target || price <= pos.stop) {
+
+                const pnl = portfolio.closePosition(i, price)
+
+                console.log("POSITION CLOSED")
+                console.log("PnL:", pnl)
+
+            }
+
+        }
+
+
+
+        /*
+        ========================
         STRATEGY ENGINE
-        =============================
+        ========================
         */
 
         const signal = generateSignal(data)
 
-
-        /*
-========================
-MANAGE OPEN POSITIONS
-========================
-*/
-
-for (let i = portfolio.positions.length - 1; i >= 0; i--) {
-
-    const pos = portfolio.positions[i]
-
-    if (price >= pos.target || price <= pos.stop) {
-
-        portfolio.closePosition(i, price)
-
-    }
-
-}
-
-        
         if(signal === "NO TRADE") return
 
 
 
         /*
-        =============================
+        ========================
         TRADE SETUP
-        =============================
+        ========================
         */
 
         const tradeSetup = {
 
             entry: price,
+
             stop: price - 100,
+
             target: price + 200,
 
             capital: portfolio.capital,
+
             riskPercent: 0.01
 
         }
@@ -128,9 +118,9 @@ for (let i = portfolio.positions.length - 1; i >= 0; i--) {
 
 
         /*
-        =============================
+        ========================
         RISK ENGINE
-        =============================
+        ========================
         */
 
         const risk = evaluateRisk(tradeSetup)
@@ -138,9 +128,9 @@ for (let i = portfolio.positions.length - 1; i >= 0; i--) {
 
 
         /*
-        =============================
+        ========================
         EXECUTION ENGINE
-        =============================
+        ========================
         */
 
         const order = executeOrder({
@@ -152,27 +142,28 @@ for (let i = portfolio.positions.length - 1; i >= 0; i--) {
             size: risk.positionSize,
 
             entry: tradeSetup.entry,
+
             stop: tradeSetup.stop,
+
             target: tradeSetup.target
 
         })
 
 
 
-        /*
-        =============================
-        PORTFOLIO UPDATE
-        =============================
-        */
-
         portfolio.openPosition(order)
 
 
 
+        console.log("EXECUTED ORDER")
+        console.log(order)
+
+
+
         /*
-        =============================
-        DASHBOARD UPDATE
-        =============================
+        ========================
+        PORTFOLIO UPDATE
+        ========================
         */
 
         const stats = portfolio.getStats()
@@ -185,22 +176,14 @@ for (let i = portfolio.positions.length - 1; i >= 0; i--) {
 
         })
 
-
-
-        console.log("EXECUTED ORDER")
-        console.log(order)
-
-        console.log("PORTFOLIO STATUS")
-        console.log(stats)
-
     })
 
 
 
     /*
-    =============================
+    ========================
     DATASET ENGINE
-    =============================
+    ========================
     */
 
     loadDataset(datasetPanel, (candle)=>{
@@ -212,9 +195,9 @@ for (let i = portfolio.positions.length - 1; i >= 0; i--) {
 
 
     /*
-    =============================
+    ========================
     REGIME ENGINE
-    =============================
+    ========================
     */
 
     startRegime(regimePanel)

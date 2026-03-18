@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>birVal v4.0 — Institutional Quant Terminal</title>
+<title>birVal v5.0 — Institutional Quant Terminal</title>
 <script src="https://s3.tradingview.com/tv.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -30,9 +30,7 @@
   --font-mono: 'IBM Plex Mono', monospace;
   --font-sans: 'IBM Plex Sans', sans-serif;
 }
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
+* { margin:0; padding:0; box-sizing:border-box; }
 body {
   background: var(--bg-0);
   color: var(--text-primary);
@@ -40,356 +38,184 @@ body {
   font-size: 11px;
   height: 100vh;
   overflow: hidden;
-  cursor: default;
 }
-
-/* ── SCANLINES EFFECT ── */
 body::before {
-  content: '';
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,255,0.015) 2px, rgba(0,212,255,0.015) 4px);
-  pointer-events: none;
-  z-index: 9999;
+  content:'';
+  position:fixed; top:0; left:0; right:0; bottom:0;
+  background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,0.012) 2px,rgba(0,212,255,0.012) 4px);
+  pointer-events:none; z-index:9999;
 }
 
-/* ── HEADER ── */
+/* HEADER */
 .header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  height: 36px;
-  background: var(--bg-1);
-  border-bottom: 1px solid var(--border);
-  position: relative;
-  overflow: hidden;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 16px; height:36px;
+  background:var(--bg-1); border-bottom:1px solid var(--border);
+  position:relative; overflow:hidden;
 }
 .header::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  animation: scanH 3s linear infinite;
+  content:''; position:absolute; bottom:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  animation:scanH 3s linear infinite;
 }
-@keyframes scanH { 0%{opacity:0.3} 50%{opacity:1} 100%{opacity:0.3} }
+@keyframes scanH { 0%{opacity:.3} 50%{opacity:1} 100%{opacity:.3} }
+.header-left { display:flex; align-items:center; gap:16px; }
+.logo { font-size:14px; font-weight:700; color:var(--accent); letter-spacing:2px; text-shadow:0 0 20px rgba(0,212,255,.5); }
+.logo span { color:var(--text-secondary); font-weight:300; }
+.header-ticker { display:flex; gap:20px; }
+.tick-item { display:flex; flex-direction:column; gap:1px; }
+.tick-label { font-size:9px; color:var(--text-muted); letter-spacing:1px; }
+.tick-val { font-size:12px; font-weight:600; }
+.tick-val.up { color:var(--green); }
+.tick-val.dn { color:var(--red); }
+.header-right { display:flex; align-items:center; gap:12px; }
+.status-dot { width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 8px var(--green); animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.status-text { font-size:10px; color:var(--green); letter-spacing:1px; }
+.clock { font-size:12px; color:var(--accent); font-weight:500; }
 
-.header-left { display: flex; align-items: center; gap: 16px; }
-.logo {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--accent);
-  letter-spacing: 2px;
-  text-shadow: 0 0 20px rgba(0,212,255,0.5);
-}
-.logo span { color: var(--text-secondary); font-weight: 300; }
-
-.header-ticker {
-  display: flex;
-  gap: 20px;
-}
-.tick-item {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.tick-label { font-size: 9px; color: var(--text-muted); letter-spacing: 1px; }
-.tick-val { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-.tick-val.up { color: var(--green); }
-.tick-val.dn { color: var(--red); }
-
-.header-right { display: flex; align-items: center; gap: 12px; }
-.status-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 8px var(--green);
-  animation: pulse 2s infinite;
-}
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-.status-text { font-size: 10px; color: var(--green); letter-spacing: 1px; }
-.clock { font-size: 12px; color: var(--accent); font-weight: 500; }
-
-/* ── MAIN LAYOUT ── */
+/* MAIN */
 .main {
-  display: grid;
-  grid-template-columns: 160px 1fr 220px;
-  grid-template-rows: 1fr;
-  height: calc(100vh - 36px - 120px);
-  gap: 0;
+  display:grid;
+  grid-template-columns:160px 1fr 230px;
+  height:calc(100vh - 36px - 128px);
 }
 
-/* ── WATCHLIST ── */
-.watchlist {
-  background: var(--bg-1);
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-.watchlist-header {
-  padding: 6px 8px;
-  font-size: 9px;
-  letter-spacing: 2px;
-  color: var(--accent);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-2);
-}
-.coin-item {
-  padding: 7px 8px;
-  border-bottom: 1px solid rgba(26,58,92,0.4);
-  cursor: pointer;
-  transition: all 0.15s;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.coin-item:hover { background: var(--bg-3); border-left: 2px solid var(--accent); }
-.coin-item.active { background: var(--bg-3); border-left: 2px solid var(--accent); }
-.coin-name { font-size: 11px; font-weight: 600; color: var(--text-primary); }
-.coin-price { font-size: 10px; color: var(--text-secondary); }
-.coin-chg { font-size: 10px; font-weight: 600; }
-.coin-chg.pos { color: var(--green); }
-.coin-chg.neg { color: var(--red); }
+/* WATCHLIST */
+.watchlist { background:var(--bg-1); border-right:1px solid var(--border); overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+.watchlist-header { padding:6px 8px; font-size:9px; letter-spacing:2px; color:var(--accent); border-bottom:1px solid var(--border); background:var(--bg-2); }
+.coin-item { padding:7px 8px; border-bottom:1px solid rgba(26,58,92,.4); cursor:pointer; transition:all .15s; display:flex; flex-direction:column; gap:2px; }
+.coin-item:hover, .coin-item.active { background:var(--bg-3); border-left:2px solid var(--accent); }
+.coin-name { font-size:11px; font-weight:600; color:var(--text-primary); }
+.coin-price { font-size:10px; color:var(--text-secondary); }
+.coin-chg { font-size:10px; font-weight:600; }
+.coin-chg.pos { color:var(--green); }
+.coin-chg.neg { color:var(--red); }
 
-/* ── CHART AREA ── */
-.chart-area {
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-0);
-  overflow: hidden;
-}
-.chart-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  background: var(--bg-1);
-  border-bottom: 1px solid var(--border);
-}
-.chart-symbol { font-size: 14px; font-weight: 700; color: var(--accent); }
-.chart-price { font-size: 18px; font-weight: 700; color: var(--text-primary); }
-.chart-price-chg { font-size: 12px; }
-.tf-buttons { display: flex; gap: 4px; }
-.tf-btn {
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.tf-btn:hover, .tf-btn.active {
-  background: var(--accent2);
-  color: white;
-  border-color: var(--accent);
-}
-#tradingview-chart { flex: 1; }
+/* CHART */
+.chart-area { display:flex; flex-direction:column; background:var(--bg-0); overflow:hidden; }
+.chart-header { display:flex; align-items:center; justify-content:space-between; padding:6px 12px; background:var(--bg-1); border-bottom:1px solid var(--border); }
+.chart-symbol { font-size:14px; font-weight:700; color:var(--accent); }
+.chart-price { font-size:18px; font-weight:700; }
+.chart-price-chg { font-size:12px; }
+.tf-buttons { display:flex; gap:4px; }
+.tf-btn { padding:2px 8px; border:1px solid var(--border); background:transparent; color:var(--text-secondary); font-family:var(--font-mono); font-size:10px; cursor:pointer; transition:all .15s; }
+.tf-btn:hover,.tf-btn.active { background:var(--accent2); color:white; border-color:var(--accent); }
+#tradingview-chart { flex:1; }
 
-/* ── RIGHT PANEL ── */
-.right-panel {
-  background: var(--bg-1);
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
+/* RIGHT PANEL */
+.right-panel { background:var(--bg-1); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+.panel-section { border-bottom:1px solid var(--border); flex-shrink:0; }
+.panel-section-title { padding:5px 10px; font-size:9px; letter-spacing:2px; color:var(--accent); background:var(--bg-2); text-transform:uppercase; }
 
-.panel-section {
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.panel-section-title {
-  padding: 5px 10px;
-  font-size: 9px;
-  letter-spacing: 2px;
-  color: var(--accent);
-  background: var(--bg-2);
-  text-transform: uppercase;
-}
+/* SIGNAL BOX */
+.signal-box { margin:8px 10px; padding:8px; border-radius:2px; border:1px solid; text-align:center; }
+.signal-box.long { border-color:var(--green); background:rgba(0,255,136,.06); }
+.signal-box.short { border-color:var(--red); background:rgba(255,59,92,.06); }
+.signal-box.wait { border-color:var(--text-muted); background:transparent; }
+.signal-dir { font-size:16px; font-weight:700; letter-spacing:2px; }
+.signal-dir.long { color:var(--green); }
+.signal-dir.short { color:var(--red); }
+.signal-dir.wait { color:var(--text-muted); }
+.signal-meta { font-size:10px; color:var(--text-secondary); margin-top:3px; }
 
-/* ── SCORE DISPLAY ── */
-.score-grid { padding: 8px 10px; display: flex; flex-direction: column; gap: 5px; }
-.score-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.score-label { font-size: 10px; color: var(--text-secondary); width: 70px; }
-.score-bar-wrap { flex: 1; height: 6px; background: var(--bg-3); border-radius: 3px; overflow: hidden; }
-.score-bar {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.8s ease;
-}
-.score-val { font-size: 10px; font-weight: 600; width: 28px; text-align: right; }
+/* SCORES */
+.score-grid { padding:8px 10px; display:flex; flex-direction:column; gap:5px; }
+.score-row { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.score-label { font-size:10px; color:var(--text-secondary); width:70px; }
+.score-bar-wrap { flex:1; height:6px; background:var(--bg-3); border-radius:3px; overflow:hidden; }
+.score-bar { height:100%; border-radius:3px; transition:width .8s ease; }
+.score-val { font-size:10px; font-weight:600; width:28px; text-align:right; }
 
-/* ── SIGNAL BOX ── */
-.signal-box {
-  margin: 8px 10px;
-  padding: 8px;
-  border-radius: 2px;
-  border: 1px solid;
-  text-align: center;
-}
-.signal-box.long { border-color: var(--green); background: rgba(0,255,136,0.06); }
-.signal-box.short { border-color: var(--red); background: rgba(255,59,92,0.06); }
-.signal-box.wait { border-color: var(--text-muted); background: transparent; }
-.signal-dir { font-size: 16px; font-weight: 700; letter-spacing: 2px; }
-.signal-dir.long { color: var(--green); }
-.signal-dir.short { color: var(--red); }
-.signal-dir.wait { color: var(--text-muted); }
-.signal-meta { font-size: 10px; color: var(--text-secondary); margin-top: 3px; }
+/* METRICS */
+.metrics-grid { padding:6px 10px; display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+.metric-item { display:flex; flex-direction:column; gap:1px; }
+.metric-label { font-size:9px; color:var(--text-muted); letter-spacing:1px; }
+.metric-val { font-size:11px; font-weight:600; }
 
-/* ── METRICS ── */
-.metrics-grid { padding: 6px 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.metric-item { display: flex; flex-direction: column; gap: 1px; }
-.metric-label { font-size: 9px; color: var(--text-muted); letter-spacing: 1px; }
-.metric-val { font-size: 11px; font-weight: 600; }
+/* CONFLUENCES */
+.conf-grid { padding:6px 10px; display:flex; flex-direction:column; gap:3px; }
+.conf-item { display:flex; align-items:center; gap:6px; font-size:9px; }
+.conf-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.conf-dot.pass { background:var(--green); box-shadow:0 0 4px var(--green); }
+.conf-dot.fail { background:var(--text-muted); }
+.conf-name { color:var(--text-secondary); }
+.conf-val { color:var(--text-primary); font-weight:600; margin-left:auto; }
 
-/* ── MTF TABLE ── */
-.mtf-table { padding: 6px 10px; }
-.mtf-row {
-  display: grid;
-  grid-template-columns: 35px 55px 30px 30px;
-  gap: 4px;
-  padding: 2px 0;
-  border-bottom: 1px solid rgba(26,58,92,0.3);
-  align-items: center;
-}
-.mtf-tf { font-size: 9px; color: var(--text-muted); }
-.mtf-bias { font-size: 10px; font-weight: 600; }
-.mtf-bias.bull { color: var(--green); }
-.mtf-bias.bear { color: var(--red); }
-.mtf-rsi { font-size: 9px; color: var(--text-secondary); }
-.mtf-adx { font-size: 9px; color: var(--text-secondary); }
+/* MTF */
+.mtf-table { padding:6px 10px; }
+.mtf-row { display:grid; grid-template-columns:35px 55px 30px 30px; gap:4px; padding:2px 0; border-bottom:1px solid rgba(26,58,92,.3); align-items:center; }
+.mtf-tf { font-size:9px; color:var(--text-muted); }
+.mtf-bias { font-size:10px; font-weight:600; }
+.mtf-bias.bull { color:var(--green); }
+.mtf-bias.bear { color:var(--red); }
+.mtf-rsi,.mtf-adx { font-size:9px; color:var(--text-secondary); }
 
-/* ── SIGNALS FEED ── */
-.signals-feed {
-  overflow-y: auto;
-  flex: 1;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-.feed-item {
-  padding: 7px 10px;
-  border-bottom: 1px solid rgba(26,58,92,0.3);
-  animation: fadeIn 0.4s ease;
-}
+/* FEED */
+.signals-feed { overflow-y:auto; flex:1; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+.feed-item { padding:7px 10px; border-bottom:1px solid rgba(26,58,92,.3); animation:fadeIn .4s ease; }
 @keyframes fadeIn { from{opacity:0;transform:translateX(10px)} to{opacity:1;transform:translateX(0)} }
-.feed-dir { font-size: 10px; font-weight: 700; }
-.feed-dir.long { color: var(--green); }
-.feed-dir.short { color: var(--red); }
-.feed-detail { font-size: 10px; color: var(--text-secondary); margin-top: 2px; }
-.feed-score { font-size: 9px; color: var(--text-muted); }
+.feed-dir { font-size:10px; font-weight:700; }
+.feed-dir.long { color:var(--green); }
+.feed-dir.short { color:var(--red); }
+.feed-detail { font-size:10px; color:var(--text-secondary); margin-top:2px; }
+.feed-score { font-size:9px; color:var(--text-muted); }
 
-/* ── BOTTOM BAR ── */
-.bottom { height: 120px; border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(7, 1fr); }
+/* BOTTOM */
+.bottom { height:128px; border-top:1px solid var(--border); display:grid; grid-template-columns:repeat(7,1fr); }
+.bottom-panel { border-right:1px solid var(--border); padding:6px 8px; display:flex; flex-direction:column; gap:3px; overflow:hidden; }
+.bottom-panel:last-child { border-right:none; }
+.bottom-title { font-size:9px; letter-spacing:1px; color:var(--accent); text-transform:uppercase; border-bottom:1px solid var(--border); padding-bottom:3px; margin-bottom:2px; }
+.bottom-content { flex:1; overflow:hidden; }
+.mini-chart-wrap { height:72px; position:relative; }
+.market-row { display:flex; justify-content:space-between; align-items:center; padding:1px 0; }
+.market-sym { font-size:9px; color:var(--text-secondary); }
+.market-pct { font-size:9px; font-weight:600; }
+.fund-row { display:flex; justify-content:space-between; padding:1px 0; }
+.fund-sym { font-size:9px; color:var(--text-secondary); }
+.fund-val { font-size:9px; font-weight:600; }
+.fund-val.pos { color:var(--red); }
+.fund-val.neg { color:var(--green); }
+.regime-big { text-align:center; margin-top:4px; }
+.regime-name { font-size:14px; font-weight:700; letter-spacing:2px; }
+.regime-sub { font-size:9px; color:var(--text-muted); margin-top:2px; }
+.ks-box { text-align:center; padding:4px; border:1px solid; border-radius:2px; margin-top:4px; }
+.ks-box.ok { border-color:var(--green); color:var(--green); }
+.ks-box.danger { border-color:var(--red); color:var(--red); animation:blink .5s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+.ks-title { font-size:9px; letter-spacing:1px; }
+.ks-val { font-size:11px; font-weight:700; }
+.heatmap-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:2px; margin-top:2px; }
+.hm-cell { padding:2px 3px; text-align:center; font-size:9px; font-weight:600; border-radius:1px; cursor:pointer; }
 
-.bottom-panel {
-  border-right: 1px solid var(--border);
-  padding: 6px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  overflow: hidden;
-}
-.bottom-panel:last-child { border-right: none; }
-.bottom-title {
-  font-size: 9px;
-  letter-spacing: 1px;
-  color: var(--accent);
-  text-transform: uppercase;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 3px;
-  margin-bottom: 2px;
-}
-.bottom-content { flex: 1; overflow: hidden; }
-.mini-chart-wrap { height: 65px; position: relative; }
+/* DATA BADGE */
+.data-badge { font-size:8px; color:var(--green); padding:1px 4px; border:1px solid var(--green); border-radius:2px; margin-left:6px; opacity:.7; }
+.data-badge.sim { color:var(--yellow); border-color:var(--yellow); }
 
-/* ── MARKET ROW ── */
-.market-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1px 0;
-}
-.market-sym { font-size: 9px; color: var(--text-secondary); }
-.market-pct { font-size: 9px; font-weight: 600; }
+/* ICHIMOKU STATUS */
+.ichi-status { display:flex; align-items:center; gap:4px; font-size:9px; padding:3px 10px; }
+.ichi-label { color:var(--text-muted); }
+.ichi-val { font-weight:600; }
 
-/* ── FUNDING ROWS ── */
-.fund-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 1px 0;
-}
-.fund-sym { font-size: 9px; color: var(--text-secondary); }
-.fund-val { font-size: 9px; font-weight: 600; }
-.fund-val.pos { color: var(--red); }
-.fund-val.neg { color: var(--green); }
-
-/* ── REGIME BOX ── */
-.regime-big {
-  text-align: center;
-  margin-top: 6px;
-}
-.regime-name {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 2px;
-}
-.regime-sub { font-size: 9px; color: var(--text-muted); margin-top: 2px; }
-
-/* ── KILL SWITCH ── */
-.ks-box {
-  text-align: center;
-  padding: 4px;
-  border: 1px solid;
-  border-radius: 2px;
-  margin-top: 4px;
-}
-.ks-box.ok { border-color: var(--green); color: var(--green); }
-.ks-box.danger { border-color: var(--red); color: var(--red); animation: blink 0.5s infinite; }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-.ks-title { font-size: 9px; letter-spacing: 1px; }
-.ks-val { font-size: 11px; font-weight: 700; }
-
-/* ── HEATMAP ── */
-.heatmap-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
-  margin-top: 2px;
-}
-.hm-cell {
-  padding: 2px 3px;
-  text-align: center;
-  font-size: 9px;
-  font-weight: 600;
-  border-radius: 1px;
-  cursor: pointer;
-}
-
-/* ── SCROLLBAR ── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar { width:4px; height:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
 </style>
 </head>
 <body>
 
-<!-- ── HEADER ── -->
 <div class="header">
   <div class="header-left">
-    <div class="logo">birVal <span>v4.0</span></div>
+    <div class="logo">birVal <span>v5.0</span></div>
     <div class="header-ticker" id="headerTicker"></div>
   </div>
   <div class="header-right">
     <div class="status-dot"></div>
-    <div class="status-text">LIVE</div>
+    <div class="status-text" id="dataStatus">LIVE</div>
     <div class="clock" id="clock">--:--:--</div>
   </div>
 </div>
 
-<!-- ── MAIN ── -->
 <div class="main">
 
   <!-- WATCHLIST -->
@@ -402,7 +228,7 @@ body::before {
   <div class="chart-area">
     <div class="chart-header">
       <div>
-        <div class="chart-symbol" id="chartSymbol">BTCUSDT</div>
+        <div class="chart-symbol" id="chartSymbol">OPUSDT</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <div>
@@ -410,9 +236,9 @@ body::before {
           <div class="chart-price-chg" id="chartChg">—</div>
         </div>
         <div class="tf-buttons">
-          <button class="tf-btn active" onclick="changeTF('1',this)">1m</button>
+          <button class="tf-btn" onclick="changeTF('1',this)">1m</button>
           <button class="tf-btn" onclick="changeTF('3',this)">3m</button>
-          <button class="tf-btn" onclick="changeTF('5',this)">5m</button>
+          <button class="tf-btn active" onclick="changeTF('5',this)">5m</button>
           <button class="tf-btn" onclick="changeTF('15',this)">15m</button>
           <button class="tf-btn" onclick="changeTF('60',this)">1H</button>
           <button class="tf-btn" onclick="changeTF('240',this)">4H</button>
@@ -425,18 +251,24 @@ body::before {
   <!-- RIGHT PANEL -->
   <div class="right-panel">
 
-    <!-- SIGNAL -->
     <div class="panel-section">
-      <div class="panel-section-title">▸ SEÑAL ACTIVA</div>
+      <div class="panel-section-title">▸ SEÑAL ACTIVA <span class="data-badge" id="signalBadge">REAL</span></div>
       <div id="signalBox" class="signal-box wait">
         <div class="signal-dir wait" id="signalDir">— ESPERA —</div>
-        <div class="signal-meta" id="signalMeta">Analizando mercado...</div>
+        <div class="signal-meta" id="signalMeta">Calculando indicadores...</div>
+      </div>
+      <div class="ichi-status">
+        <span class="ichi-label">Ichimoku:</span>
+        <span class="ichi-val" id="ichiStatus">—</span>
+        <span class="ichi-label" style="margin-left:8px">ADX:</span>
+        <span class="ichi-val" id="adxStatus">—</span>
+        <span class="ichi-label" style="margin-left:8px">Conf:</span>
+        <span class="ichi-val" id="confStatus">—</span>
       </div>
     </div>
 
-    <!-- SCORES -->
     <div class="panel-section">
-      <div class="panel-section-title">▸ SCORING</div>
+      <div class="panel-section-title">▸ SCORING <span class="data-badge" id="scoreBadge">REAL</span></div>
       <div class="score-grid">
         <div class="score-row">
           <div class="score-label">LONG</div>
@@ -461,171 +293,136 @@ body::before {
       </div>
     </div>
 
-    <!-- METRICS -->
     <div class="panel-section">
-      <div class="panel-section-title">▸ MÉTRICAS</div>
-      <div class="metrics-grid">
-        <div class="metric-item">
-          <div class="metric-label">ADX</div>
-          <div class="metric-val" id="mADX">—</div>
-        </div>
-        <div class="metric-item">
-          <div class="metric-label">RSI</div>
-          <div class="metric-val" id="mRSI">—</div>
-        </div>
-        <div class="metric-item">
-          <div class="metric-label">CONFLUENCIA</div>
-          <div class="metric-val" id="mConf" style="color:var(--accent)">—</div>
-        </div>
-        <div class="metric-item">
-          <div class="metric-label">R:R</div>
-          <div class="metric-val" id="mRR">—</div>
-        </div>
-        <div class="metric-item">
-          <div class="metric-label">PROB%</div>
-          <div class="metric-val" id="mProb">—</div>
-        </div>
-        <div class="metric-item">
-          <div class="metric-label">VAR 95%</div>
-          <div class="metric-val" id="mVar">2.0%</div>
-        </div>
+      <div class="panel-section-title">▸ CONFLUENCIAS v5 <span class="data-badge" id="confBadge">REAL</span></div>
+      <div class="conf-grid" id="confGrid">
+        <div class="conf-item"><div class="conf-dot fail" id="c1dot"></div><div class="conf-name">Estructura precio</div><div class="conf-val" id="c1val">—</div></div>
+        <div class="conf-item"><div class="conf-dot fail" id="c2dot"></div><div class="conf-name">Momentum/Vol</div><div class="conf-val" id="c2val">—</div></div>
+        <div class="conf-item"><div class="conf-dot fail" id="c3dot"></div><div class="conf-name">Flujo institucional</div><div class="conf-val" id="c3val">—</div></div>
+        <div class="conf-item"><div class="conf-dot fail" id="c4dot"></div><div class="conf-name">Wyckoff+ICT</div><div class="conf-val" id="c4val">—</div></div>
+        <div class="conf-item"><div class="conf-dot fail" id="c5dot"></div><div class="conf-name">Régimen mkt</div><div class="conf-val" id="c5val">—</div></div>
       </div>
     </div>
 
-    <!-- MTF -->
     <div class="panel-section">
-      <div class="panel-section-title">▸ MULTI-TIMEFRAME</div>
+      <div class="panel-section-title">▸ MÉTRICAS</div>
+      <div class="metrics-grid">
+        <div class="metric-item"><div class="metric-label">ADX</div><div class="metric-val" id="mADX">—</div></div>
+        <div class="metric-item"><div class="metric-label">RSI</div><div class="metric-val" id="mRSI">—</div></div>
+        <div class="metric-item"><div class="metric-label">MACD HIST</div><div class="metric-val" id="mMACD">—</div></div>
+        <div class="metric-item"><div class="metric-label">R:R</div><div class="metric-val" id="mRR">—</div></div>
+        <div class="metric-item"><div class="metric-label">CVD</div><div class="metric-val" id="mCVD">—</div></div>
+        <div class="metric-item"><div class="metric-label">VAR 95%</div><div class="metric-val" id="mVar">2.0%</div></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">▸ MULTI-TIMEFRAME <span class="data-badge" id="mtfBadge">REAL</span></div>
       <div class="mtf-table" id="mtfTable"></div>
     </div>
 
-    <!-- FEED -->
     <div class="panel-section-title">▸ SEÑALES HOY</div>
     <div class="signals-feed" id="signalsFeed"></div>
-
   </div>
 </div>
 
-<!-- ── BOTTOM ── -->
+<!-- BOTTOM -->
 <div class="bottom">
-
-  <!-- CVD Chart -->
   <div class="bottom-panel">
     <div class="bottom-title">CVD Orderflow</div>
     <div class="mini-chart-wrap"><canvas id="cvdChart"></canvas></div>
   </div>
-
-  <!-- Volume -->
   <div class="bottom-panel">
     <div class="bottom-title">Volumen</div>
     <div class="mini-chart-wrap"><canvas id="volChart"></canvas></div>
   </div>
-
-  <!-- PnL -->
   <div class="bottom-panel">
     <div class="bottom-title">PnL Session</div>
     <div class="mini-chart-wrap"><canvas id="pnlChart"></canvas></div>
   </div>
-
-  <!-- Market Regime -->
   <div class="bottom-panel">
     <div class="bottom-title">Régimen</div>
     <div class="bottom-content">
       <div class="regime-big">
-        <div class="regime-name" id="regimeName" style="color:var(--red)">BAJISTA</div>
+        <div class="regime-name" id="regimeName" style="color:var(--yellow)">—</div>
         <div class="regime-sub" id="regimeSub">BTC 24h: —</div>
       </div>
       <div class="ks-box ok" id="ksBox">
         <div class="ks-title">KILL SWITCH</div>
-        <div class="ks-val">✅ OK</div>
+        <div class="ks-val" id="ksVal">✅ OK</div>
       </div>
     </div>
   </div>
-
-  <!-- Funding -->
   <div class="bottom-panel">
     <div class="bottom-title">Funding Rate</div>
     <div class="bottom-content" id="fundingContent"></div>
   </div>
-
-  <!-- Heatmap -->
   <div class="bottom-panel">
     <div class="bottom-title">Heatmap 24h</div>
     <div class="heatmap-grid" id="heatmapGrid"></div>
   </div>
-
-  <!-- Stats -->
   <div class="bottom-panel">
     <div class="bottom-title">Estadísticas</div>
     <div class="bottom-content">
-      <div class="market-row"><span class="market-sym">Win Rate</span><span class="market-pct" id="statWR" style="color:var(--green)">77%</span></div>
+      <div class="market-row"><span class="market-sym">Win Rate</span><span class="market-pct" id="statWR" style="color:var(--text-muted)">Sin historial</span></div>
       <div class="market-row"><span class="market-sym">Trades Hoy</span><span class="market-pct" id="statTrades" style="color:var(--accent)">0</span></div>
-      <div class="market-row"><span class="market-sym">PnL Hoy</span><span class="market-pct" id="statPnL" style="color:var(--green)">+0.00</span></div>
+      <div class="market-row"><span class="market-sym">PnL Hoy</span><span class="market-pct" id="statPnL" style="color:var(--text-secondary)">+0.00</span></div>
       <div class="market-row"><span class="market-sym">Racha</span><span class="market-pct" id="statStreak" style="color:var(--yellow)">0</span></div>
-      <div class="market-row"><span class="market-sym">Kelly</span><span class="market-pct" style="color:var(--purple)">4.00%</span></div>
-      <div class="market-row"><span class="market-sym">DD Día</span><span class="market-pct" id="statDD" style="color:var(--orange)">0.00%</span></div>
+      <div class="market-row"><span class="market-sym">Estado bat.</span><span class="market-pct" id="statBat" style="color:var(--text-muted)">—</span></div>
+      <div class="market-row"><span class="market-sym">Última act.</span><span class="market-pct" id="statUpdate" style="color:var(--text-muted)">—</span></div>
     </div>
   </div>
-
 </div>
 
 <script>
-// ══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 // CONFIG
-// ══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 const SYMBOLS = [
   'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','TAOUSDT',
-  'TRUMPUSDT','AVAXUSDT','ARBUSDT','OPUSDT','LINKUSDT',
-  'XRPUSDT','DOGEUSDT','HBARUSDT','DOTUSDT','NEARUSDT'
+  'TRUMPUSDT','AVAXUSDT','ARBUSDT','OPUSDT','LINKUSDT','HBARUSDT'
 ];
-const TF_LABELS = {'1':'1m','3':'3m','5':'5m','15':'15m','60':'1h','240':'4h'};
-let currentSymbol = 'BTCUSDT';
-let currentTF = '1';
+const FUTURES_SYMBOLS = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','OPUSDT','LINKUSDT','HBARUSDT','TAOUSDT'];
+const FAPI = 'https://fapi.binance.com';
+const BAPI = 'https://api.binance.com';
+
+let currentSymbol = 'OPUSDT';
+let currentTF = '5';
 let tvWidget = null;
-let signalsToday = 0;
-let pnlToday = 0;
-let winRate = 0.77;
-let streak = 0;
 let priceCache = {};
 let changeCache = {};
+let candleCache = {}; // symbol -> {tf -> candles[]}
+let pnlToday = 0;
+let tradesCount = 0;
+let streak = 0;
+let pnlHistory = Array(20).fill(0);
 
-// ══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 // CLOCK
-// ══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 function updateClock() {
-  const now = new Date();
-  const tz = now.toLocaleTimeString('es-CO', {
-    hour:'2-digit', minute:'2-digit', second:'2-digit',
-    timeZone:'America/Bogota'
-  });
+  const tz = new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Bogota'});
   document.getElementById('clock').textContent = tz + ' COT';
 }
 setInterval(updateClock, 1000);
 updateClock();
 
-// ══════════════════════════════════════════════
-// TRADINGVIEW CHART
-// ══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// TRADINGVIEW
+// ═══════════════════════════════════════════════════════════
 function initChart(symbol, interval) {
   document.getElementById('tradingview-chart').innerHTML = '';
   tvWidget = new TradingView.widget({
     symbol: 'BINANCE:' + symbol,
     interval: interval,
     container_id: 'tradingview-chart',
-    theme: 'dark',
-    style: '1',
-    autosize: true,
-    toolbar_bg: '#060f1e',
-    hide_side_toolbar: false,
-    allow_symbol_change: false,
+    theme: 'dark', style: '1', autosize: true,
+    toolbar_bg: '#060f1e', hide_side_toolbar: false,
     studies: ['RSI@tv-basicstudies','MACD@tv-basicstudies','Volume@tv-basicstudies'],
-    overrides: {
-      'paneProperties.background': '#020812',
-      'paneProperties.backgroundType': 'solid',
-      'scalesProperties.textColor': '#7aa4c8',
-    }
+    overrides: { 'paneProperties.background':'#020812', 'paneProperties.backgroundType':'solid', 'scalesProperties.textColor':'#7aa4c8' }
   });
 }
-initChart('BTCUSDT', '1');
+initChart(currentSymbol, currentTF);
 
 function changeSymbol(symbol) {
   currentSymbol = symbol;
@@ -634,49 +431,44 @@ function changeSymbol(symbol) {
   document.querySelector(`[data-sym="${symbol}"]`)?.classList.add('active');
   initChart(symbol, currentTF);
   updateChartHeader(symbol);
+  runAnalysis(symbol);
 }
-
 function changeTF(tf, btn) {
   currentTF = tf;
   document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   initChart(currentSymbol, tf);
 }
-
 function updateChartHeader(symbol) {
-  if (priceCache[symbol]) {
-    document.getElementById('chartPrice').textContent = '$' + parseFloat(priceCache[symbol]).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:4});
-    const chg = parseFloat(changeCache[symbol] || 0);
-    const el = document.getElementById('chartChg');
-    el.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
-    el.style.color = chg >= 0 ? 'var(--green)' : 'var(--red)';
-  }
+  if (!priceCache[symbol]) return;
+  const price = parseFloat(priceCache[symbol]);
+  document.getElementById('chartPrice').textContent = '$' + price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4});
+  const chg = parseFloat(changeCache[symbol] || 0);
+  const el = document.getElementById('chartChg');
+  el.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+  el.style.color = chg >= 0 ? 'var(--green)' : 'var(--red)';
 }
 
-// ══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 // WATCHLIST
-// ══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 function buildWatchlist() {
-  const container = document.getElementById('watchlistItems');
-  container.innerHTML = '';
+  const c = document.getElementById('watchlistItems');
+  c.innerHTML = '';
   SYMBOLS.forEach(sym => {
     const div = document.createElement('div');
     div.className = 'coin-item' + (sym === currentSymbol ? ' active' : '');
     div.setAttribute('data-sym', sym);
-    div.innerHTML = `
-      <div class="coin-name">${sym.replace('USDT','')}</div>
-      <div class="coin-price" id="wp-${sym}">—</div>
-      <div class="coin-chg" id="wc-${sym}">—</div>`;
+    div.innerHTML = `<div class="coin-name">${sym.replace('USDT','')}</div><div class="coin-price" id="wp-${sym}">—</div><div class="coin-chg" id="wc-${sym}">—</div>`;
     div.onclick = () => changeSymbol(sym);
-    container.appendChild(div);
+    c.appendChild(div);
   });
 }
 buildWatchlist();
 
 async function updatePrices() {
   try {
-    const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbols=[' +
-      SYMBOLS.map(s => `"${s}"`).join(',') + ']');
+    const res = await fetch(`${BAPI}/api/v3/ticker/24hr?symbols=[${SYMBOLS.map(s=>`"${s}"`).join(',')}]`);
     const data = await res.json();
     const headerItems = [];
     data.forEach(item => {
@@ -685,285 +477,768 @@ async function updatePrices() {
       const chg = parseFloat(item.priceChangePercent);
       priceCache[sym] = item.lastPrice;
       changeCache[sym] = item.priceChangePercent;
-      const priceEl = document.getElementById('wp-' + sym);
-      const chgEl = document.getElementById('wc-' + sym);
-      if (priceEl) priceEl.textContent = '$' + price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4});
-      if (chgEl) {
-        chgEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
-        chgEl.className = 'coin-chg ' + (chg >= 0 ? 'pos' : 'neg');
-      }
-      if (['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT'].includes(sym)) {
-        headerItems.push({sym: sym.replace('USDT',''), price, chg});
-      }
+      const pe = document.getElementById('wp-'+sym);
+      const ce = document.getElementById('wc-'+sym);
+      if (pe) pe.textContent = '$' + price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4});
+      if (ce) { ce.textContent = (chg>=0?'+':'') + chg.toFixed(2)+'%'; ce.className = 'coin-chg '+(chg>=0?'pos':'neg'); }
+      if (['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT'].includes(sym)) headerItems.push({sym:sym.replace('USDT',''),price,chg});
     });
-    // Header ticker
-    document.getElementById('headerTicker').innerHTML = headerItems.map(i => `
-      <div class="tick-item">
-        <div class="tick-label">${i.sym}</div>
-        <div class="tick-val ${i.chg>=0?'up':'dn'}">$${i.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-      </div>`).join('');
+    document.getElementById('headerTicker').innerHTML = headerItems.map(i =>
+      `<div class="tick-item"><div class="tick-label">${i.sym}</div><div class="tick-val ${i.chg>=0?'up':'dn'}">$${i.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>`
+    ).join('');
     updateChartHeader(currentSymbol);
     updateHeatmap(data);
     updateRegime(data);
-  } catch(e) {}
+  } catch(e) { console.warn('Price fetch error', e); }
 }
 
-// ══════════════════════════════════════════════
-// HEATMAP
-// ══════════════════════════════════════════════
-function updateHeatmap(data) {
-  const top = data.sort((a,b) => Math.abs(b.priceChangePercent) - Math.abs(a.priceChangePercent)).slice(0,12);
-  const grid = document.getElementById('heatmapGrid');
-  grid.innerHTML = top.map(item => {
-    const chg = parseFloat(item.priceChangePercent);
-    const intensity = Math.min(Math.abs(chg) / 10, 1);
-    const bg = chg >= 0
-      ? `rgba(0,255,136,${0.1 + intensity * 0.5})`
-      : `rgba(255,59,92,${0.1 + intensity * 0.5})`;
-    const color = chg >= 0 ? 'var(--green)' : 'var(--red)';
-    return `<div class="hm-cell" style="background:${bg};color:${color}" onclick="changeSymbol('${item.symbol}')">
-      ${item.symbol.replace('USDT','')}
-      <br>${chg.toFixed(1)}%
-    </div>`;
-  }).join('');
-}
+// ═══════════════════════════════════════════════════════════
+// FETCH CANDLES (REAL)
+// ═══════════════════════════════════════════════════════════
+const TF_MAP = {'1':'1m','3':'3m','5':'5m','15':'15m','60':'1h','240':'4h'};
+const INTERVALS = ['1m','3m','5m','15m','1h','4h'];
 
-// ══════════════════════════════════════════════
-// REGIME
-// ══════════════════════════════════════════════
-function updateRegime(data) {
-  const btc = data.find(d => d.symbol === 'BTCUSDT');
-  if (!btc) return;
-  const chg = parseFloat(btc.priceChangePercent);
-  const regime = chg > 2 ? 'ALCISTA' : chg < -2 ? 'BAJISTA' : chg > 0.5 ? 'NEUTRO+' : 'LATERAL';
-  const col = chg > 1 ? 'var(--green)' : chg < -1 ? 'var(--red)' : 'var(--yellow)';
-  document.getElementById('regimeName').textContent = regime;
-  document.getElementById('regimeName').style.color = col;
-  document.getElementById('regimeSub').textContent = 'BTC 24h: ' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
-}
-
-// ══════════════════════════════════════════════
-// FUNDING RATES
-// ══════════════════════════════════════════════
-async function updateFunding() {
+async function fetchKlines(symbol, interval, limit=200) {
   try {
-    const res = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
+    const endpoint = FUTURES_SYMBOLS.includes(symbol)
+      ? `${FAPI}/fapi/v1/klines`
+      : `${BAPI}/api/v3/klines`;
+    const res = await fetch(`${endpoint}?symbol=${symbol}&interval=${interval}&limit=${limit}`);
     const data = await res.json();
-    const top = data.filter(d => SYMBOLS.includes(d.symbol)).slice(0, 8);
-    document.getElementById('fundingContent').innerHTML = top.map(item => {
-      const rate = parseFloat(item.lastFundingRate) * 100;
-      const cls = rate > 0 ? 'pos' : 'neg';
-      return `<div class="fund-row">
-        <span class="fund-sym">${item.symbol.replace('USDT','')}</span>
-        <span class="fund-val ${cls}">${rate.toFixed(3)}%</span>
-      </div>`;
-    }).join('');
-  } catch(e) {}
+    if (!Array.isArray(data)) return [];
+    return data.map(k => ({
+      t: k[0], o: parseFloat(k[1]), h: parseFloat(k[2]),
+      l: parseFloat(k[3]), c: parseFloat(k[4]), v: parseFloat(k[5]),
+      tb: parseFloat(k[9]), tv: parseFloat(k[10])  // taker buy base & quote
+    }));
+  } catch(e) { return []; }
 }
 
-// ══════════════════════════════════════════════
-// MINI CHARTS
-// ══════════════════════════════════════════════
-let cvdData = Array(30).fill(0);
-let volData = Array(30).fill(0);
-let pnlData = Array(20).fill(0);
+// ═══════════════════════════════════════════════════════════
+// TECHNICAL INDICATORS (REAL CALCULATIONS)
+// ═══════════════════════════════════════════════════════════
 
-const miniChartOpts = (color) => ({
-  type: 'line',
-  data: { labels: [], datasets: [{ data: [], borderColor: color, backgroundColor: color.replace(')',',0.1)').replace('rgb','rgba'), borderWidth: 1.5, fill: true, tension: 0.4, pointRadius: 0 }] },
-  options: {
-    responsive: true, maintainAspectRatio: false, animation: false,
-    plugins: { legend: { display: false } },
-    scales: { x: { display: false }, y: { display: false, grid: { display: false } } },
-    elements: { line: { borderWidth: 1.5 } }
+function calcEMA(closes, period) {
+  if (closes.length < period) return closes.map(() => closes[0]);
+  const k = 2 / (period + 1);
+  const ema = [closes[0]];
+  for (let i = 1; i < closes.length; i++) {
+    ema.push(closes[i] * k + ema[i-1] * (1-k));
   }
-});
-
-const cvdCtx = document.getElementById('cvdChart').getContext('2d');
-const volCtx = document.getElementById('volChart').getContext('2d');
-const pnlCtx = document.getElementById('pnlChart').getContext('2d');
-
-const cvdChartObj = new Chart(cvdCtx, miniChartOpts('rgb(0,212,255)'));
-const volChartObj = new Chart(volCtx, miniChartOpts('rgb(168,85,247)'));
-const pnlChartObj = new Chart(pnlCtx, miniChartOpts('rgb(0,255,136)'));
-
-function updateMiniCharts() {
-  // CVD simulation
-  const delta = (Math.random() - 0.48) * 1000;
-  cvdData.push(cvdData[cvdData.length-1] + delta);
-  if (cvdData.length > 30) cvdData.shift();
-
-  // Volume simulation
-  volData.push(Math.random() * 1000 + 200);
-  if (volData.length > 30) volData.shift();
-
-  // PnL
-  pnlData.push(pnlToday);
-  if (pnlData.length > 20) pnlData.shift();
-
-  [cvdChartObj, volChartObj, pnlChartObj].forEach((chart, i) => {
-    const d = [cvdData, volData, pnlData][i];
-    chart.data.labels = d.map((_, j) => j);
-    chart.data.datasets[0].data = d;
-    chart.update('none');
-  });
+  return ema;
 }
-setInterval(updateMiniCharts, 3000);
 
-// ══════════════════════════════════════════════
-// SCORING SIMULATION (conectar con bot real)
-// ══════════════════════════════════════════════
-function updateScoring() {
-  const longScore  = (Math.random() * 4 + 3).toFixed(1);
-  const shortScore = (Math.random() * 4 + 2).toFixed(1);
-  const ml         = (Math.random() * 40 + 40).toFixed(0);
-  const flow       = (Math.random() * 60 + 20).toFixed(0);
+function calcRSI(closes, period=14) {
+  if (closes.length < period + 1) return 50;
+  const changes = closes.slice(1).map((c,i) => c - closes[i]);
+  let gains = 0, losses = 0;
+  for (let i = 0; i < period; i++) {
+    if (changes[i] > 0) gains += changes[i];
+    else losses += Math.abs(changes[i]);
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  for (let i = period; i < changes.length; i++) {
+    const g = changes[i] > 0 ? changes[i] : 0;
+    const l = changes[i] < 0 ? Math.abs(changes[i]) : 0;
+    avgGain = (avgGain * (period-1) + g) / period;
+    avgLoss = (avgLoss * (period-1) + l) / period;
+  }
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
 
-  document.getElementById('scoreLongBar').style.width  = (longScore / 10 * 100) + '%';
-  document.getElementById('scoreShortBar').style.width = (shortScore / 10 * 100) + '%';
-  document.getElementById('scoreMLBar').style.width    = ml + '%';
-  document.getElementById('scoreFlowBar').style.width  = flow + '%';
+function calcATR(candles, period=14) {
+  if (candles.length < period) return candles[candles.length-1]?.h - candles[candles.length-1]?.l || 0;
+  const trs = candles.slice(1).map((c,i) => {
+    const prev = candles[i];
+    return Math.max(c.h - c.l, Math.abs(c.h - prev.c), Math.abs(c.l - prev.c));
+  });
+  let atr = trs.slice(0, period).reduce((s,v) => s+v, 0) / period;
+  for (let i = period; i < trs.length; i++) {
+    atr = (atr * (period-1) + trs[i]) / period;
+  }
+  return atr;
+}
 
-  document.getElementById('scoreLongVal').textContent  = longScore;
-  document.getElementById('scoreShortVal').textContent = shortScore;
-  document.getElementById('scoreMLVal').textContent    = ml + '%';
-  document.getElementById('scoreFlowVal').textContent  = flow + '%';
+function calcADX(candles, period=14) {
+  if (candles.length < period * 2) return 20;
+  const plusDM = [], minusDM = [], tr = [];
+  for (let i = 1; i < candles.length; i++) {
+    const h = candles[i].h - candles[i-1].h;
+    const l = candles[i-1].l - candles[i].l;
+    plusDM.push(h > l && h > 0 ? h : 0);
+    minusDM.push(l > h && l > 0 ? l : 0);
+    tr.push(Math.max(candles[i].h - candles[i].l, Math.abs(candles[i].h - candles[i-1].c), Math.abs(candles[i].l - candles[i-1].c)));
+  }
+  const smooth = (arr, p) => {
+    let s = arr.slice(0,p).reduce((a,b)=>a+b,0);
+    const out = [s];
+    for (let i = p; i < arr.length; i++) { s = s - s/p + arr[i]; out.push(s); }
+    return out;
+  };
+  const sTR = smooth(tr, period);
+  const sPDM = smooth(plusDM, period);
+  const sMDM = smooth(minusDM, period);
+  const diP = sPDM.map((v,i) => sTR[i] ? v/sTR[i]*100 : 0);
+  const diM = sMDM.map((v,i) => sTR[i] ? v/sTR[i]*100 : 0);
+  const dx = diP.map((v,i) => (diP[i]+diM[i]) ? Math.abs(diP[i]-diM[i])/(diP[i]+diM[i])*100 : 0);
+  const adxArr = smooth(dx, period);
+  return adxArr[adxArr.length-1] || 20;
+}
 
-  const adx  = (Math.random() * 30 + 10).toFixed(1);
-  const rsi  = (Math.random() * 40 + 30).toFixed(0);
-  const conf = Math.floor(Math.random() * 3 + 2) + '/5';
-  const rr   = (Math.random() * 2 + 1.5).toFixed(1);
-  const prob = Math.floor(Math.random() * 30 + 50);
+function calcMACD(closes) {
+  const ema12 = calcEMA(closes, 12);
+  const ema26 = calcEMA(closes, 26);
+  const macd  = ema12.map((v,i) => v - ema26[i]);
+  const signal= calcEMA(macd, 9);
+  const hist  = macd.map((v,i) => v - signal[i]);
+  const last = hist.length - 1;
+  return { macd: macd[last], signal: signal[last], hist: hist[last], histPrev: hist[last-1] };
+}
 
-  document.getElementById('mADX').textContent  = adx;
-  document.getElementById('mADX').style.color  = adx > 25 ? 'var(--green)' : 'var(--yellow)';
-  document.getElementById('mRSI').textContent  = rsi;
-  document.getElementById('mRSI').style.color  = rsi > 70 ? 'var(--red)' : rsi < 30 ? 'var(--green)' : 'var(--text-primary)';
-  document.getElementById('mConf').textContent = conf;
-  document.getElementById('mRR').textContent   = rr + 'x';
-  document.getElementById('mRR').style.color   = rr >= 1.8 ? 'var(--green)' : 'var(--orange)';
-  document.getElementById('mProb').textContent = prob + '%';
-  document.getElementById('mProb').style.color = prob > 65 ? 'var(--green)' : 'var(--yellow)';
+function calcBB(closes, period=20, mult=2) {
+  if (closes.length < period) return { upper:0, lower:0, mid:0, pct:0.5, width:0 };
+  const slice = closes.slice(-period);
+  const mid   = slice.reduce((s,v)=>s+v,0) / period;
+  const std   = Math.sqrt(slice.reduce((s,v)=>s+(v-mid)**2,0)/period);
+  const upper = mid + mult*std;
+  const lower = mid - mult*std;
+  const last  = closes[closes.length-1];
+  const pct   = upper > lower ? (last - lower) / (upper - lower) : 0.5;
+  const width = mid ? (upper - lower) / mid : 0;
+  return { upper, lower, mid, pct, width };
+}
 
-  // Signal box
-  const sl = parseFloat(longScore);
-  const ss = parseFloat(shortScore);
-  const box = document.getElementById('signalBox');
-  const dir = document.getElementById('signalDir');
+function calcIchimoku(candles) {
+  if (candles.length < 52) return { above:false, below:false, inCloud:true, tenkan:0, kijun:0 };
+  const highs = candles.map(c=>c.h);
+  const lows  = candles.map(c=>c.l);
+  const hMax = (arr,n) => Math.max(...arr.slice(-n));
+  const lMin = (arr,n) => Math.min(...arr.slice(-n));
+  const tenkan  = (hMax(highs,9)  + lMin(lows,9))  / 2;
+  const kijun   = (hMax(highs,26) + lMin(lows,26)) / 2;
+  const senkouA = (tenkan + kijun) / 2;
+  const senkouB = (hMax(highs,52) + lMin(lows,52)) / 2;
+  const price   = candles[candles.length-1].c;
+  const above   = price > senkouA && price > senkouB;
+  const below   = price < senkouA && price < senkouB;
+  return { above, below, inCloud: !above && !below, tenkan, kijun, senkouA, senkouB };
+}
+
+function calcCVD(candles) {
+  // CVD real usando taker buy vs taker sell
+  let cvd = 0;
+  const cvdArr = candles.map(c => {
+    const tb = c.tb || c.v * 0.5;
+    const ts = c.v - tb;
+    cvd += (tb - ts);
+    return cvd;
+  });
+  const last10 = cvdArr.slice(-10);
+  const slope  = (last10[last10.length-1] - last10[0]) / (Math.abs(last10[0]) + 1e-9);
+  return { cvd: cvdArr[cvdArr.length-1], slope, signal: slope > 0 ? 1 : -1 };
+}
+
+function calcOBV(candles) {
+  let obv = 0;
+  for (let i = 1; i < candles.length; i++) {
+    if (candles[i].c > candles[i-1].c) obv += candles[i].v;
+    else if (candles[i].c < candles[i-1].c) obv -= candles[i].v;
+  }
+  const obvArr = [];
+  let o = 0;
+  for (let i = 1; i < candles.length; i++) {
+    if (candles[i].c > candles[i-1].c) o += candles[i].v;
+    else if (candles[i].c < candles[i-1].c) o -= candles[i].v;
+    obvArr.push(o);
+  }
+  const ema20 = calcEMA(obvArr, 20);
+  return obvArr[obvArr.length-1] > ema20[ema20.length-1] ? 1 : -1;
+}
+
+function calcWyckoff(candles) {
+  if (candles.length < 20) return { score:0, spring:false, utad:false, sos:false, sow:false };
+  const n = 20;
+  const recent = candles.slice(-n);
+  const volAvg = recent.reduce((s,c)=>s+c.v,0) / n;
+  const last   = candles[candles.length-1];
+  const volSpike = last.v > volAvg * 2;
+  const support    = Math.min(...candles.slice(-n).map(c=>c.l));
+  const resistance = Math.max(...candles.slice(-n).map(c=>c.h));
+  const prevSupport    = Math.min(...candles.slice(-n-1,-1).map(c=>c.l));
+  const prevResistance = Math.max(...candles.slice(-n-1,-1).map(c=>c.h));
+  const sma50 = candles.slice(-50).reduce((s,c)=>s+c.c,0) / 50;
+  const spring = last.l < prevSupport && last.c > prevSupport && volSpike;
+  const utad   = last.h > prevResistance && last.c < prevResistance && volSpike;
+  const sos    = last.c > last.o && (last.c - last.o)/last.o > 0.02 && volSpike && last.c > sma50;
+  const sow    = last.c < last.o && (last.o - last.c)/last.o > 0.02 && volSpike && last.c < sma50;
+  const score  = (spring ? 0.25 : 0) + (sos ? 0.20 : 0) - (utad ? 0.25 : 0) - (sow ? 0.20 : 0);
+  return { score, spring, utad, sos, sow, volSpike };
+}
+
+function calcICT(candles) {
+  if (candles.length < 10) return { bosB:false, bosS:false, fvgB:false, fvgS:false, obB:false, obS:false };
+  const n = candles.length;
+  const swingH = Math.max(...candles.slice(-5).map(c=>c.h));
+  const swingL = Math.min(...candles.slice(-5).map(c=>c.l));
+  const prev5H = Math.max(...candles.slice(-10,-5).map(c=>c.h));
+  const prev5L = Math.min(...candles.slice(-10,-5).map(c=>c.l));
+  const last = candles[n-1];
+  const bosB = last.c > prev5H;
+  const bosS = last.c < prev5L;
+  // FVG
+  const fvgB = n >= 3 && candles[n-3].h < candles[n-1].l;
+  const fvgS = n >= 3 && candles[n-3].l > candles[n-1].h;
+  // Order blocks
+  const pct3 = (candles[n-1].c - candles[n-3].c) / (candles[n-3].c + 1e-9);
+  const obB  = pct3 > 0.012 && (candles[n-4]?.c < candles[n-4]?.o);
+  const obS  = pct3 < -0.012 && (candles[n-4]?.c > candles[n-4]?.o);
+  return { bosB, bosS, fvgB, fvgS, obB, obS };
+}
+
+function calcTakerRatio(candles) {
+  const last5 = candles.slice(-5);
+  const tb = last5.reduce((s,c)=>s+(c.tb||c.v*0.5),0);
+  const tv = last5.reduce((s,c)=>s+c.v,0);
+  return tv > 0 ? tb/tv : 0.5;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CONFLUENCE ENGINE (mirrors birVal v5 Python logic)
+// ═══════════════════════════════════════════════════════════
+function checkConfluences(direction, indicators) {
+  const isLong = direction === 'LONG';
+  const conf   = [];
+  const {ema21,ema55,ema200,ichi,rsi,cvd,obv,macd,inst,wyckoff,ict,adx,volRegime,regime,takerRatio} = indicators;
+
+  // 1. Estructura precio (EMA + Ichimoku)
+  const emaAligned = isLong
+    ? (ema21 > ema55 && ema55 > ema200)
+    : (ema21 < ema55 && ema55 < ema200);
+  const ichiOk = isLong ? ichi.above : ichi.below;
+  conf.push({
+    name: 'Estructura precio',
+    pass: emaAligned,
+    detail: emaAligned ? (ichiOk ? 'EMA+Ichi✓' : 'EMA✓') : '✗'
+  });
+
+  // 2. Momentum + Volumen
+  const momentumBull = rsi > 50 && cvd.signal >= 0 && obv > 0 && macd.hist > 0;
+  const momentumBear = rsi < 50 && cvd.signal <= 0 && obv < 0 && macd.hist < 0;
+  const momentumOk   = isLong ? momentumBull : momentumBear;
+  conf.push({
+    name: 'Momentum/Vol',
+    pass: momentumOk,
+    detail: `RSI=${rsi.toFixed(0)} CVD=${cvd.signal > 0 ? '↑' : '↓'}`
+  });
+
+  // 3. Flujo institucional
+  const instBull = inst > 0.05 && takerRatio > 0.50;
+  const instBear = inst < -0.05 && takerRatio < 0.50;
+  const instOk   = isLong ? instBull : instBear;
+  conf.push({
+    name: 'Flujo institucional',
+    pass: instOk,
+    detail: `Flow=${inst.toFixed(2)} Taker=${(takerRatio*100).toFixed(0)}%`
+  });
+
+  // 4. Wyckoff + ICT
+  const patternsBull = (wyckoff.score > 0.2 || wyckoff.spring || wyckoff.sos) && (ict.bosB || ict.fvgB || ict.obB);
+  const patternsBear = (wyckoff.score < -0.2 || wyckoff.utad || wyckoff.sow) && (ict.bosS || ict.fvgS || ict.obS);
+  const patternsOk   = isLong ? patternsBull : patternsBear;
+  conf.push({
+    name: 'Wyckoff+ICT',
+    pass: patternsOk,
+    detail: patternsOk ? (isLong ? 'Spring/BOS✓' : 'UTAD/BOS✓') : '✗'
+  });
+
+  // 5. Régimen favorable
+  const regimeBull = (regime === 'TRENDING_UP' || regime === 'RANGING') && adx > 18 && volRegime < 2.5;
+  const regimeBear = (regime === 'TRENDING_DOWN' || regime === 'RANGING') && adx > 18 && volRegime < 2.5;
+  const regimeOk   = isLong ? regimeBull : regimeBear;
+  conf.push({
+    name: 'Régimen mkt',
+    pass: regimeOk,
+    detail: `${regime} ADX=${adx.toFixed(0)}`
+  });
+
+  const total = conf.filter(c=>c.pass).length;
+  return { total, conf };
+}
+
+// Ichimoku filter — mirrors Python IchimokuFilter
+function ichimokuFilter(direction, ichi) {
+  const isLong = direction === 'LONG';
+  if (isLong && ichi.below) return { blocked: true, reason: 'BLOQUEADO: precio bajo nube', adj: 0 };
+  if (!isLong && ichi.above) return { blocked: true, reason: 'BLOQUEADO: precio sobre nube', adj: 0 };
+  if (isLong && ichi.above)  return { blocked: false, reason: '✅ sobre nube', adj: 0.5 };
+  if (!isLong && ichi.below) return { blocked: false, reason: '✅ bajo nube', adj: 0.5 };
+  return { blocked: false, reason: '⚠️ en nube (-0.8)', adj: -0.8 };
+}
+
+// ContraFlow filter — mirrors Python ContraFlowFilter
+function contraFlowFilter(direction, lowerTFIndicators) {
+  const isLong = direction === 'LONG';
+  let contraCount = 0;
+  for (const ind of lowerTFIndicators) {
+    const buyingActive  = [ind.takerRatio > 0.60, ind.cvdSlope > 0, ind.rsiSlope > 0, ind.obvSignal > 0].filter(Boolean).length >= 3;
+    const sellingActive = [ind.takerRatio < 0.40, ind.cvdSlope < 0, ind.rsiSlope < 0, ind.obvSignal < 0].filter(Boolean).length >= 3;
+    if (!isLong && buyingActive)  contraCount++;
+    if (isLong && sellingActive)  contraCount++;
+  }
+  if (contraCount >= lowerTFIndicators.length && lowerTFIndicators.length > 0) {
+    return { blocked: true, reason: `ContraFlow: ${isLong ? 'venta' : 'compra'} activa en TF menores` };
+  }
+  return { blocked: false, reason: '' };
+}
+
+// Score calculation — mirrors birVal v5 scoring
+function calcSignalScore(direction, indicators, ichiAdj, nConf, mtfCoherence, regime) {
+  const isLong = direction === 'LONG';
+  const {adx, macd, cvd, obv, wyckoff, ict, inst, mlProb, rsi, ema21, ema55, ema200} = indicators;
+  const trendScore = (
+    (isLong ? (indicators.price > ema21) : (indicators.price < ema21)) * 2 +
+    (isLong ? (ema21 > ema55) : (ema21 < ema55)) * 2 +
+    (isLong ? (ema55 > ema200) : (ema55 < ema200)) * 1 +
+    (isLong ? (macd.hist > 0) : (macd.hist < 0)) * 2 +
+    (adx > 25 ? 1 : 0) * 2
+  ) / 9;
+  const mlFactor = isLong ? mlProb : (1 - mlProb);
+  const regimeAdj = (regime === 'TRENDING_UP' || regime === 'TRENDING_DOWN') ? 0.5 : -0.3;
+  const mtfAdj    = mtfCoherence > 0.6 ? 0.5 : 0;
+  const score = (
+    Math.min(adx / 50, 1) * 2.5 +
+    trendScore * 2.0 +
+    inst * 1.5 +
+    mlFactor * 0.5 +
+    wyckoff.score * 0.5 +
+    regimeAdj +
+    mtfAdj +
+    nConf * 0.4 +
+    ichiAdj
+  );
+  return Math.max(0, Math.min(score, 10));
+}
+
+// ═══════════════════════════════════════════════════════════
+// MAIN ANALYSIS ENGINE
+// ═══════════════════════════════════════════════════════════
+async function runAnalysis(symbol) {
+  document.getElementById('signalMeta').textContent = 'Descargando velas reales...';
+
+  // Fetch all timeframes in parallel
+  const [c1m, c3m, c5m, c15m, c1h, c4h] = await Promise.all([
+    fetchKlines(symbol, '1m', 100),
+    fetchKlines(symbol, '3m', 100),
+    fetchKlines(symbol, '5m', 200),
+    fetchKlines(symbol, '15m', 200),
+    fetchKlines(symbol, '1h', 100),
+    fetchKlines(symbol, '4h', 100),
+  ]);
+
+  if (!c5m.length) {
+    document.getElementById('signalMeta').textContent = 'Error al obtener datos';
+    return;
+  }
+
+  // ── Calculate indicators for 5m (primary TF) ──
+  const closes5 = c5m.map(c=>c.c);
+  const ema21_5  = calcEMA(closes5, 21); const ema21  = ema21_5[ema21_5.length-1];
+  const ema55_5  = calcEMA(closes5, 55); const ema55  = ema55_5[ema55_5.length-1];
+  const ema200_5 = calcEMA(closes5,200); const ema200 = ema200_5[ema200_5.length-1];
+  const rsi5  = calcRSI(closes5, 14);
+  const atr5  = calcATR(c5m, 14);
+  const adx5  = calcADX(c5m, 14);
+  const macd5 = calcMACD(closes5);
+  const bb5   = calcBB(closes5);
+  const ichi5 = calcIchimoku(c5m.length >= 52 ? c5m : c5m);
+  const cvd5  = calcCVD(c5m);
+  const obv5  = calcOBV(c5m);
+  const wyck5 = calcWyckoff(c5m);
+  const ict5  = calcICT(c5m);
+  const taker5= calcTakerRatio(c5m);
+  const price5= c5m[c5m.length-1].c;
+
+  // RSI slope (3 candles)
+  const rsiArr5 = [];
+  for (let i = closes5.length-4; i < closes5.length; i++) rsiArr5.push(calcRSI(closes5.slice(0,i+1),14));
+  const rsiSlope5 = rsiArr5.length >= 2 ? rsiArr5[rsiArr5.length-1] - rsiArr5[0] : 0;
+
+  // CVD slope for 5m
+  const cvdSlope5 = cvd5.slope;
+
+  // ── Vol regime (rvol5 / rvol20) ──
+  const logRets = closes5.slice(1).map((c,i) => Math.log(c/closes5[i]));
+  const std5  = Math.sqrt(logRets.slice(-5).reduce((s,v)=>s+v*v,0)/5);
+  const std20 = Math.sqrt(logRets.slice(-20).reduce((s,v)=>s+v*v,0)/20);
+  const volRegime5 = std20 > 0 ? std5/std20 : 1;
+
+  // ── Regime detection (mirrors Python RegimeDetector) ──
+  const r2_arr = closes5.slice(-20);
+  const n20 = r2_arr.length;
+  const xMean = (n20-1)/2;
+  const yMean = r2_arr.reduce((s,v)=>s+v,0)/n20;
+  const ssxy = r2_arr.reduce((s,v,i)=>s+(i-xMean)*(v-yMean),0);
+  const ssxx = r2_arr.reduce((s,v,i)=>s+(i-xMean)**2,0);
+  const ssyy = r2_arr.reduce((s,v,i)=>s+(v-yMean)**2,0);
+  const r2   = ssxx*ssyy > 0 ? (ssxy**2)/(ssxx*ssyy) : 0;
+  const priceUp = price5 > closes5[closes5.length-21];
+  let regime = 'RANGING';
+  if (adx5 > 28 && r2 > 0.60) regime = priceUp ? 'TRENDING_UP' : 'TRENDING_DOWN';
+  else if (volRegime5 > 2.0 || (adx5 > 35 && r2 < 0.35)) regime = 'VOLATILE';
+
+  // ── Institutional flow proxy (CVD + OBV + taker) ──
+  const instScore = cvd5.slope * 0.4 + (obv5 > 0 ? 0.3 : -0.3) + (taker5 > 0.55 ? 0.3 : taker5 < 0.45 ? -0.3 : 0);
+
+  // ── ML proxy (simple momentum prob, since we can't run Python model in browser) ──
+  const mlProb = Math.max(0.2, Math.min(0.8, 0.5 + (rsi5-50)/100 + macd5.hist*50 + cvd5.signal*0.1));
+
+  const indicators = {
+    price: price5, ema21, ema55, ema200, rsi: rsi5, atr: atr5, adx: adx5,
+    macd: macd5, bb: bb5, ichi: ichi5, cvd: cvd5, obv: obv5,
+    wyckoff: wyck5, ict: ict5, takerRatio: taker5,
+    inst: instScore, mlProb, volRegime: volRegime5, regime
+  };
+
+  // ── MTF analysis (mirrors MultiTimeframeEngine) ──
+  const tfData = [
+    {tf:'1m', candles:c1m}, {tf:'3m', candles:c3m}, {tf:'5m', candles:c5m},
+    {tf:'15m', candles:c15m}, {tf:'1h', candles:c1h}, {tf:'4h', candles:c4h}
+  ];
+  const mtfResults = tfData.map(({tf, candles}) => {
+    if (!candles.length) return {tf, bias:'NEUTRAL', rsi:50, adx:20, score:0.5};
+    const cls = candles.map(c=>c.c);
+    const r = calcRSI(cls, 14);
+    const a = calcADX(candles, 14);
+    const m = calcMACD(cls);
+    const e21 = calcEMA(cls,21); const e55 = calcEMA(cls,55);
+    const cvd = calcCVD(candles);
+    const obv = calcOBV(candles);
+    const ichi = calcIchimoku(candles.length >= 52 ? candles : candles);
+    const bull = (
+      (m.hist > 0 ? 1.5 : 0) + (r > 52 ? 1.0 : 0) +
+      (e21[e21.length-1] > e55[e55.length-1] ? 1.5 : 0) +
+      (cvd.signal === 1 ? 1.0 : 0) + (obv > 0 ? 0.5 : 0) +
+      (ichi.above ? 1.0 : 0)
+    ) / 6.5;
+    return {tf, bias: bull > 0.5 ? 'BULL' : 'BEAR', rsi: r, adx: a, score: bull};
+  });
+  const longTFs  = mtfResults.filter(t=>t.bias==='BULL').length;
+  const shortTFs = mtfResults.filter(t=>t.bias==='BEAR').length;
+  let mtfDir = 'NONE';
+  if (longTFs >= 2) mtfDir = 'LONG';
+  else if (shortTFs >= 2) mtfDir = 'SHORT';
+  const alignedTFs = mtfResults.filter(t => (mtfDir === 'LONG' ? t.bias==='BULL' : t.bias==='BEAR'));
+  const mtfCoherence = alignedTFs.length > 0
+    ? alignedTFs.reduce((s,t)=>s+t.score,0)/alignedTFs.length : 0;
+
+  // ── Update MTF table ──
+  updateMTFTable(mtfResults);
+
+  // ── Lower TF indicators for ContraFlow ──
+  const lowerTF1m = c1m.length ? {
+    takerRatio: calcTakerRatio(c1m),
+    cvdSlope: calcCVD(c1m).slope,
+    rsiSlope: (() => { const cl = c1m.map(c=>c.c); return calcRSI(cl.slice(-4),14) - calcRSI(cl.slice(-7,-3),14); })(),
+    obvSignal: calcOBV(c1m)
+  } : null;
+  const lowerTF3m = c3m.length ? {
+    takerRatio: calcTakerRatio(c3m),
+    cvdSlope: calcCVD(c3m).slope,
+    rsiSlope: (() => { const cl = c3m.map(c=>c.c); return calcRSI(cl.slice(-4),14) - calcRSI(cl.slice(-7,-3),14); })(),
+    obvSignal: calcOBV(c3m)
+  } : null;
+  const lowerTFData = [lowerTF1m, lowerTF3m].filter(Boolean);
+
+  // ── Evaluate both directions ──
+  const evaluate = (dir) => {
+    // Ichimoku filter
+    const ichiF = ichimokuFilter(dir, ichi5);
+    if (ichiF.blocked) return { valid: false, reason: ichiF.reason, score: 0, confs: {total:0,conf:[]} };
+
+    // ContraFlow filter
+    const cfF = contraFlowFilter(dir, lowerTFData);
+    if (cfF.blocked) return { valid: false, reason: cfF.reason, score: 0, confs: {total:0,conf:[]} };
+
+    // ADX block vs trend
+    if (adx5 > 30) {
+      if (dir === 'LONG' && ichi5.below) return { valid: false, reason: `ADX>${adx5.toFixed(0)} bloquea LONG contra bajista`, score: 0, confs: {total:0,conf:[]} };
+      if (dir === 'SHORT' && ichi5.above) return { valid: false, reason: `ADX>${adx5.toFixed(0)} bloquea SHORT contra alcista`, score: 0, confs: {total:0,conf:[]} };
+    }
+
+    // Confluences
+    const confs = checkConfluences(dir, indicators);
+    if (confs.total < 3) return { valid: false, reason: `Solo ${confs.total}/5 confluencias`, score: 0, confs };
+
+    // Score
+    const score = calcSignalScore(dir, indicators, ichiF.adj, confs.total, mtfCoherence, regime);
+
+    // MTF penalty
+    let finalScore = score;
+    if (mtfDir !== 'NONE' && mtfDir !== dir) {
+      finalScore *= 0.75;
+    }
+
+    const minScore = dir === 'LONG' ? 6.5 : 6.5;
+    if (finalScore < minScore) return { valid: false, reason: `Score ${finalScore.toFixed(1)} < mín ${minScore}`, score: finalScore, confs };
+
+    return { valid: true, reason: ichiF.reason, score: finalScore, confs, ichiAdj: ichiF.adj };
+  };
+
+  const longEval  = evaluate('LONG');
+  const shortEval = evaluate('SHORT');
+
+  // ── Best signal ──
+  let bestDir = null;
+  let bestEval = null;
+  if (longEval.valid && shortEval.valid) {
+    bestDir  = longEval.score >= shortEval.score ? 'LONG' : 'SHORT';
+    bestEval = longEval.score >= shortEval.score ? longEval : shortEval;
+  } else if (longEval.valid) {
+    bestDir = 'LONG'; bestEval = longEval;
+  } else if (shortEval.valid) {
+    bestDir = 'SHORT'; bestEval = shortEval;
+  }
+
+  // ── Calculate scores for display (0-10) ──
+  const longScore  = longEval.score  > 0 ? longEval.score  : calcSignalScore('LONG',  indicators, 0, longEval.confs?.total||0,  mtfCoherence, regime) * 0.6;
+  const shortScore = shortEval.score > 0 ? shortEval.score : calcSignalScore('SHORT', indicators, 0, shortEval.confs?.total||0, mtfCoherence, regime) * 0.6;
+
+  // ── Update UI ──
+  updateScoring(longScore, shortScore, mlProb, instScore);
+  updateMetrics(adx5, rsi5, macd5, cvd5, atr5, price5);
+  updateSignalBox(bestDir, bestEval, longScore, shortScore);
+  updateConfluences(bestDir, bestDir ? bestEval.confs : longEval.confs);
+  updateIchiStatus(ichi5, adx5, bestDir ? bestEval.confs?.total : 0);
+  updateCVDChart(c5m);
+  updateVolChart(c5m);
+  document.getElementById('statUpdate').textContent = new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',timeZone:'America/Bogota'});
+}
+
+// ═══════════════════════════════════════════════════════════
+// UI UPDATERS
+// ═══════════════════════════════════════════════════════════
+function updateScoring(longS, shortS, ml, flow) {
+  document.getElementById('scoreLongBar').style.width  = (longS/10*100)+'%';
+  document.getElementById('scoreShortBar').style.width = (shortS/10*100)+'%';
+  document.getElementById('scoreMLBar').style.width    = (ml*100)+'%';
+  const flowPct = (Math.abs(flow)*100+50);
+  document.getElementById('scoreFlowBar').style.width  = Math.min(flowPct,100)+'%';
+  document.getElementById('scoreLongVal').textContent  = longS.toFixed(1);
+  document.getElementById('scoreShortVal').textContent = shortS.toFixed(1);
+  document.getElementById('scoreMLVal').textContent    = (ml*100).toFixed(0)+'%';
+  document.getElementById('scoreFlowVal').textContent  = (flow*100).toFixed(0)+'%';
+}
+
+function updateMetrics(adx, rsi, macd, cvd, atr, price) {
+  const adxEl = document.getElementById('mADX');
+  adxEl.textContent = adx.toFixed(1);
+  adxEl.style.color = adx > 25 ? 'var(--green)' : adx > 18 ? 'var(--yellow)' : 'var(--text-muted)';
+  const rsiEl = document.getElementById('mRSI');
+  rsiEl.textContent = rsi.toFixed(0);
+  rsiEl.style.color = rsi > 70 ? 'var(--red)' : rsi < 30 ? 'var(--green)' : 'var(--text-primary)';
+  const macdEl = document.getElementById('mMACD');
+  macdEl.textContent = macd.hist > 0 ? '+' + macd.hist.toFixed(4) : macd.hist.toFixed(4);
+  macdEl.style.color = macd.hist > 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('mRR').textContent = '2.8x';
+  const cvdEl = document.getElementById('mCVD');
+  cvdEl.textContent = cvd.slope > 0 ? '↑ Bull' : '↓ Bear';
+  cvdEl.style.color = cvd.slope > 0 ? 'var(--green)' : 'var(--red)';
+}
+
+function updateSignalBox(dir, evalResult, longS, shortS) {
+  const box  = document.getElementById('signalBox');
+  const dirEl= document.getElementById('signalDir');
   const meta = document.getElementById('signalMeta');
-
-  if (sl > 7.0 && sl > ss) {
+  if (dir === 'LONG') {
     box.className = 'signal-box long';
-    dir.className = 'signal-dir long';
-    dir.textContent = '▲ LONG';
-    meta.textContent = 'Score ' + longScore + ' | RR ' + rr + 'x | Prob ' + prob + '%';
-  } else if (ss > 7.0 && ss > sl) {
+    dirEl.className = 'signal-dir long';
+    dirEl.textContent = '▲ LONG';
+    meta.textContent = `Score ${evalResult.score.toFixed(1)} | Conf ${evalResult.confs.total}/5 | ${evalResult.reason}`;
+  } else if (dir === 'SHORT') {
     box.className = 'signal-box short';
-    dir.className = 'signal-dir short';
-    dir.textContent = '▼ SHORT';
-    meta.textContent = 'Score ' + shortScore + ' | RR ' + rr + 'x | Prob ' + prob + '%';
+    dirEl.className = 'signal-dir short';
+    dirEl.textContent = '▼ SHORT';
+    meta.textContent = `Score ${evalResult.score.toFixed(1)} | Conf ${evalResult.confs.total}/5 | ${evalResult.reason}`;
   } else {
     box.className = 'signal-box wait';
-    dir.className = 'signal-dir wait';
-    dir.textContent = '— ESPERA —';
-    meta.textContent = 'Buscando señal...';
+    dirEl.className = 'signal-dir wait';
+    dirEl.textContent = '— ESPERA —';
+    const longReason  = longS < 6.5 ? `LONG bloqueado` : '';
+    const shortReason = shortS < 6.5 ? `SHORT bloqueado` : '';
+    meta.textContent = 'Sin confluencias suficientes';
   }
 }
 
-// ══════════════════════════════════════════════
-// MTF TABLE
-// ══════════════════════════════════════════════
-function updateMTF() {
-  const tfs = ['1m','3m','5m','15m','1h','4h'];
+function updateConfluences(dir, confs) {
+  if (!confs || !confs.conf) return;
+  confs.conf.forEach((c, i) => {
+    const dot = document.getElementById(`c${i+1}dot`);
+    const val = document.getElementById(`c${i+1}val`);
+    if (dot) { dot.className = 'conf-dot ' + (c.pass ? 'pass' : 'fail'); }
+    if (val) { val.textContent = c.detail; val.style.color = c.pass ? 'var(--green)' : 'var(--text-muted)'; }
+  });
+  const total = confs.total;
+  document.getElementById('confStatus').textContent = `${total}/5`;
+  document.getElementById('confStatus').style.color = total >= 3 ? 'var(--green)' : total >= 2 ? 'var(--yellow)' : 'var(--red)';
+}
+
+function updateIchiStatus(ichi, adx, confs) {
+  const el = document.getElementById('ichiStatus');
+  if (ichi.above)       { el.textContent = '✅ Sobre nube'; el.style.color = 'var(--green)'; }
+  else if (ichi.below)  { el.textContent = '🔴 Bajo nube';  el.style.color = 'var(--red)'; }
+  else                  { el.textContent = '⚠️ En nube';    el.style.color = 'var(--yellow)'; }
+  document.getElementById('adxStatus').textContent = adx.toFixed(1);
+  document.getElementById('adxStatus').style.color = adx > 25 ? 'var(--green)' : 'var(--yellow)';
+}
+
+function updateMTFTable(mtfResults) {
   const container = document.getElementById('mtfTable');
   container.innerHTML = '';
-  tfs.forEach(tf => {
-    const bull = Math.random() > 0.45;
-    const rsi = Math.floor(Math.random() * 40 + 35);
-    const adx = Math.floor(Math.random() * 30 + 10);
+  mtfResults.forEach(({tf, bias, rsi, adx}) => {
     const row = document.createElement('div');
     row.className = 'mtf-row';
     row.innerHTML = `
       <div class="mtf-tf">${tf}</div>
-      <div class="mtf-bias ${bull?'bull':'bear'}">${bull?'▲ BULL':'▼ BEAR'}</div>
-      <div class="mtf-rsi">${rsi}</div>
-      <div class="mtf-adx">${adx}</div>`;
+      <div class="mtf-bias ${bias==='BULL'?'bull':'bear'}">${bias==='BULL'?'▲ BULL':'▼ BEAR'}</div>
+      <div class="mtf-rsi" style="color:${rsi>70?'var(--red)':rsi<30?'var(--green)':'var(--text-secondary)'}">${rsi.toFixed(0)}</div>
+      <div class="mtf-adx" style="color:${adx>25?'var(--green)':'var(--text-muted)'}">${adx.toFixed(0)}</div>`;
     container.appendChild(row);
   });
 }
 
-// ══════════════════════════════════════════════
-// SIGNALS FEED
-// ══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// MINI CHARTS (REAL DATA)
+// ═══════════════════════════════════════════════════════════
+const miniOpts = (color) => ({
+  type:'line',
+  data:{labels:[],datasets:[{data:[],borderColor:color,backgroundColor:color.replace(')',',0.08)').replace('rgb','rgba'),borderWidth:1.5,fill:true,tension:0.4,pointRadius:0}]},
+  options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}}}
+});
+const cvdCtx = document.getElementById('cvdChart').getContext('2d');
+const volCtx = document.getElementById('volChart').getContext('2d');
+const pnlCtx = document.getElementById('pnlChart').getContext('2d');
+const cvdChartObj = new Chart(cvdCtx, miniOpts('rgb(0,212,255)'));
+const volChartObj = new Chart(volCtx,  miniOpts('rgb(168,85,247)'));
+const pnlChartObj = new Chart(pnlCtx,  miniOpts('rgb(0,255,136)'));
+
+function updateCVDChart(candles) {
+  let cvd = 0;
+  const cvdData = candles.slice(-30).map(c => {
+    const tb = c.tb || c.v*0.5; cvd += (tb - (c.v-tb)); return cvd;
+  });
+  cvdChartObj.data.labels = cvdData.map((_,i)=>i);
+  cvdChartObj.data.datasets[0].data = cvdData;
+  cvdChartObj.data.datasets[0].borderColor = cvdData[cvdData.length-1] > cvdData[0] ? 'rgb(0,255,136)' : 'rgb(255,59,92)';
+  cvdChartObj.update('none');
+}
+
+function updateVolChart(candles) {
+  const volData = candles.slice(-30).map(c=>c.v);
+  volChartObj.data.labels = volData.map((_,i)=>i);
+  volChartObj.data.datasets[0].data = volData;
+  volChartObj.update('none');
+}
+
+function updatePnlChart() {
+  pnlHistory.push(pnlToday);
+  if (pnlHistory.length > 20) pnlHistory.shift();
+  pnlChartObj.data.labels = pnlHistory.map((_,i)=>i);
+  pnlChartObj.data.datasets[0].data = pnlHistory;
+  pnlChartObj.data.datasets[0].borderColor = pnlToday >= 0 ? 'rgb(0,255,136)' : 'rgb(255,59,92)';
+  pnlChartObj.update('none');
+}
+
+// ═══════════════════════════════════════════════════════════
+// HEATMAP & REGIME & FUNDING (REAL)
+// ═══════════════════════════════════════════════════════════
+function updateHeatmap(data) {
+  const top = [...data].sort((a,b)=>Math.abs(b.priceChangePercent)-Math.abs(a.priceChangePercent)).slice(0,12);
+  document.getElementById('heatmapGrid').innerHTML = top.map(item => {
+    const chg = parseFloat(item.priceChangePercent);
+    const intensity = Math.min(Math.abs(chg)/10, 1);
+    const bg = chg>=0 ? `rgba(0,255,136,${.1+intensity*.5})` : `rgba(255,59,92,${.1+intensity*.5})`;
+    const color = chg>=0 ? 'var(--green)' : 'var(--red)';
+    return `<div class="hm-cell" style="background:${bg};color:${color}" onclick="changeSymbol('${item.symbol}')">${item.symbol.replace('USDT','')}<br>${chg.toFixed(1)}%</div>`;
+  }).join('');
+}
+
+function updateRegime(data) {
+  const btc = data.find(d=>d.symbol==='BTCUSDT');
+  if (!btc) return;
+  const chg = parseFloat(btc.priceChangePercent);
+  const regime = chg > 2 ? 'ALCISTA' : chg < -2 ? 'BAJISTA' : chg > 0.5 ? 'NEUTRO+' : 'LATERAL';
+  const col    = chg > 1 ? 'var(--green)' : chg < -1 ? 'var(--red)' : 'var(--yellow)';
+  document.getElementById('regimeName').textContent = regime;
+  document.getElementById('regimeName').style.color = col;
+  document.getElementById('regimeSub').textContent = 'BTC 24h: ' + (chg>=0?'+':'') + chg.toFixed(2)+'%';
+}
+
+async function updateFunding() {
+  try {
+    const res = await fetch(`${FAPI}/fapi/v1/premiumIndex`);
+    const data = await res.json();
+    const top = data.filter(d=>SYMBOLS.includes(d.symbol)).slice(0,8);
+    document.getElementById('fundingContent').innerHTML = top.map(item => {
+      const rate = parseFloat(item.lastFundingRate)*100;
+      return `<div class="fund-row"><span class="fund-sym">${item.symbol.replace('USDT','')}</span><span class="fund-val ${rate>0?'pos':'neg'}">${rate.toFixed(3)}%</span></div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════
+// BOT JSON INTEGRATION (Phase 2 — lee señales del bot Python)
+// ═══════════════════════════════════════════════════════════
+// El bot Python puede exportar a un archivo JSON en GitHub Pages.
+// Descomentar cuando el bot esté configurado para exportar:
+//
+// async function fetchBotSignals() {
+//   try {
+//     const res = await fetch('https://birval.github.io/BirVal/signals.json?t=' + Date.now());
+//     const data = await res.json();
+//     if (data.last_signal) {
+//       addSignalFeed(data.last_signal.symbol, data.last_signal.direction,
+//                     data.last_signal.score, data.last_signal.entry);
+//       document.getElementById('statWR').textContent = data.stats.winrate > 0
+//         ? data.stats.winrate.toFixed(1) + '%' : 'Sin historial';
+//       document.getElementById('statTrades').textContent = data.stats.total_trades;
+//       pnlToday = data.stats.pnl_today;
+//       updatePnlChart();
+//     }
+//   } catch(e) {}
+// }
+// setInterval(fetchBotSignals, 15000);
+
 function addSignalFeed(sym, dir, score, entry) {
   const feed = document.getElementById('signalsFeed');
   const item = document.createElement('div');
   item.className = 'feed-item';
   const now = new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',timeZone:'America/Bogota'});
   item.innerHTML = `
-    <div class="feed-dir ${dir.toLowerCase()}">${dir === 'LONG' ? '▲' : '▼'} ${dir} ${sym.replace('USDT','')}</div>
-    <div class="feed-detail">Entry: $${entry} | Score: ${score}/10</div>
+    <div class="feed-dir ${dir.toLowerCase()}">${dir==='LONG'?'▲':'▼'} ${dir} ${sym.replace('USDT','')}</div>
+    <div class="feed-detail">Entry: $${parseFloat(entry).toFixed(4)} | Score: ${score}/10</div>
     <div class="feed-score">${now} COT</div>`;
   feed.prepend(item);
   if (feed.children.length > 15) feed.removeChild(feed.lastChild);
-  signalsToday++;
-  document.getElementById('statTrades').textContent = signalsToday;
+  tradesCount++;
+  document.getElementById('statTrades').textContent = tradesCount;
 }
 
-// ══════════════════════════════════════════════
-// STATS UPDATE
-// ══════════════════════════════════════════════
-function updateStats(pnl) {
-  pnlToday += pnl;
-  const pnlEl = document.getElementById('statPnL');
-  pnlEl.textContent = (pnlToday >= 0 ? '+' : '') + pnlToday.toFixed(2);
-  pnlEl.style.color = pnlToday >= 0 ? 'var(--green)' : 'var(--red)';
-  if (pnl > 0) streak = Math.max(0, streak) + 1;
-  else if (pnl < 0) streak = Math.min(0, streak) - 1;
-  const strEl = document.getElementById('statStreak');
-  strEl.textContent = (streak > 0 ? '+' : '') + streak;
-  strEl.style.color = streak > 0 ? 'var(--green)' : streak < 0 ? 'var(--red)' : 'var(--yellow)';
-  const dd = Math.min(0, pnlToday) / 10000 * 100;
-  document.getElementById('statDD').textContent = dd.toFixed(2) + '%';
-  // Kill switch visual
-  const ksBox = document.getElementById('ksBox');
-  if (Math.abs(dd) > 4) {
-    ksBox.className = 'ks-box danger';
-    ksBox.innerHTML = '<div class="ks-title">KILL SWITCH</div><div class="ks-val">⚠️ ACTIVO</div>';
-  } else {
-    ksBox.className = 'ks-box ok';
-    ksBox.innerHTML = '<div class="ks-title">KILL SWITCH</div><div class="ks-val">✅ OK</div>';
-  }
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+async function init() {
+  await updatePrices();
+  await updateFunding();
+  await runAnalysis(currentSymbol);
 }
+init();
 
-// ══════════════════════════════════════════════
-// SIMULATION — en producción esto llega del bot Python
-// ══════════════════════════════════════════════
-function simulateActivity() {
-  if (Math.random() > 0.85) {
-    const sym = SYMBOLS[Math.floor(Math.random() * 6)];
-    const dir = Math.random() > 0.5 ? 'LONG' : 'SHORT';
-    const score = (Math.random() * 3 + 5).toFixed(1);
-    const price = priceCache[sym] || '100.00';
-    addSignalFeed(sym, dir, score, parseFloat(price).toFixed(2));
-    const pnl = (Math.random() - 0.38) * 15;
-    updateStats(pnl);
-  }
-}
-
-// ══════════════════════════════════════════════
-// INIT & INTERVALS
-// ══════════════════════════════════════════════
-updatePrices();
-updateFunding();
-updateScoring();
-updateMTF();
-
-setInterval(updatePrices,   10000);
-setInterval(updateFunding,  60000);
-setInterval(updateScoring,  8000);
-setInterval(updateMTF,      12000);
-setInterval(simulateActivity, 15000);
+setInterval(updatePrices,  10000);
+setInterval(updateFunding, 60000);
+setInterval(() => runAnalysis(currentSymbol), 30000);
 </script>
 </body>
 </html>

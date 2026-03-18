@@ -563,29 +563,45 @@ function calcATR(candles, period=14) {
 }
 
 function calcADX(candles, period=14) {
-  if (candles.length < period * 2) return 20;
+  if (candles.length < period * 2 + 1) return 20;
   const plusDM = [], minusDM = [], tr = [];
   for (let i = 1; i < candles.length; i++) {
-    const h = candles[i].h - candles[i-1].h;
-    const l = candles[i-1].l - candles[i].l;
-    plusDM.push(h > l && h > 0 ? h : 0);
-    minusDM.push(l > h && l > 0 ? l : 0);
-    tr.push(Math.max(candles[i].h - candles[i].l, Math.abs(candles[i].h - candles[i-1].c), Math.abs(candles[i].l - candles[i-1].c)));
+    const upMove   = candles[i].h - candles[i-1].h;
+    const downMove = candles[i-1].l - candles[i].l;
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+    tr.push(Math.max(
+      candles[i].h - candles[i].l,
+      Math.abs(candles[i].h - candles[i-1].c),
+      Math.abs(candles[i].l - candles[i-1].c)
+    ));
   }
-  const smooth = (arr, p) => {
-    let s = arr.slice(0,p).reduce((a,b)=>a+b,0);
+  // Wilder smoothing — seed with simple average, then EMA-style
+  const wilderSmooth = (arr, p) => {
+    if (arr.length < p) return arr.map(() => 0);
+    let s = arr.slice(0, p).reduce((a, b) => a + b, 0);
     const out = [s];
-    for (let i = p; i < arr.length; i++) { s = s - s/p + arr[i]; out.push(s); }
+    for (let i = p; i < arr.length; i++) {
+      s = s - s / p + arr[i];
+      out.push(s);
+    }
     return out;
   };
-  const sTR = smooth(tr, period);
-  const sPDM = smooth(plusDM, period);
-  const sMDM = smooth(minusDM, period);
-  const diP = sPDM.map((v,i) => sTR[i] ? v/sTR[i]*100 : 0);
-  const diM = sMDM.map((v,i) => sTR[i] ? v/sTR[i]*100 : 0);
-  const dx = diP.map((v,i) => (diP[i]+diM[i]) ? Math.abs(diP[i]-diM[i])/(diP[i]+diM[i])*100 : 0);
-  const adxArr = smooth(dx, period);
-  return adxArr[adxArr.length-1] || 20;
+  const sTR  = wilderSmooth(tr, period);
+  const sPDM = wilderSmooth(plusDM, period);
+  const sMDM = wilderSmooth(minusDM, period);
+  // DI+ and DI- (divide smoothed DM by smoothed TR, then x100)
+  const diP = sPDM.map((v, i) => sTR[i] > 0 ? (v / sTR[i]) * 100 : 0);
+  const diM = sMDM.map((v, i) => sTR[i] > 0 ? (v / sTR[i]) * 100 : 0);
+  // DX
+  const dx = diP.map((v, i) => {
+    const sum = diP[i] + diM[i];
+    return sum > 0 ? (Math.abs(diP[i] - diM[i]) / sum) * 100 : 0;
+  });
+  // ADX = Wilder smooth of DX, clamp 0-100
+  const adxSmoothed = wilderSmooth(dx, period);
+  const raw = adxSmoothed[adxSmoothed.length - 1];
+  return Math.min(100, Math.max(0, isNaN(raw) ? 20 : raw / period));
 }
 
 function calcMACD(closes) {

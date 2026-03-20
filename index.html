@@ -1,1847 +1,803 @@
-from __future__ import annotations
-import os, sys, time, asyncio, logging, hashlib, hmac, json
-import warnings, traceback
-from datetime import datetime, timedelta
-from collections import defaultdict, deque
-from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Tuple, Any
-from enum import Enum
-
-import numpy as np
-import pandas as pd
-import requests
-
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
-warnings.filterwarnings("ignore")
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("birval_v71.log", encoding="utf-8"),
-    ]
-)
-log = logging.getLogger("birVal_v71")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# CONFIGURACIÓN
-# ══════════════════════════════════════════════════════════════════════════════
-class Config:
-    API_KEY:    str = os.getenv("BINANCE_API_KEY",    "")
-    API_SECRET: str = os.getenv("BINANCE_API_SECRET", "")
-    TG_TOKEN:   str = os.getenv("TELEGRAM_TOKEN",     "")
-    TG_CHAT:    str = os.getenv("TELEGRAM_CHAT_ID",   "")
-
-    SYMBOLS: List[str] = [
-        "SOLUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT",
-        "TAOUSDT", "HBARUSDT", "OPUSDT", "BNBUSDT", "TRUMPUSDT", "ARBUSDT",
-    ]
-    MARKET_REF: List[str] = ["BTCUSDT", "ETHUSDT"]
-
-    BTC_STRONG_BEAR_PCT: float = -0.012
-    BTC_STRONG_BULL_PCT: float =  0.012
-
-    TIMEFRAMES: List[str] = ["1m", "3m", "5m"]
-
-    # ── Detección S/R ────────────────────────────────────────────────────────
-    LEVEL_LOOKBACK:     int   = 200
-    LEVEL_TOUCH_ZONE:   float = 0.004   # FIX-15: 0.3% → 0.4% captura más proximidad
-    LEVEL_MIN_TOUCHES:  int   = 2
-    LEVEL_MERGE_PCT:    float = 0.002   # Debe ser > 0 y < TOUCH_ZONE/2
-    LEVEL_EXPIRE_HOURS: int   = 48
-
-    REGIME_LOOKBACK = 30
-    REGIME_ADX_TREND = 25
-    REGIME_ADX_WEAK  = 15
-    REGIME_ATR_MULT  = 1.5
-
-    # ── Score weights (suma máxima = 10.0) ────────────────────────────────────
-    SCORE_CVD_MAX    = 2.5
-    SCORE_OI_MAX     = 1.5
-    SCORE_CANDLE_MAX = 1.5
-    SCORE_TEND_MAX   = 2.0
-    SCORE_LIQ_MAX    = 1.0
-    SCORE_OB_MAX     = 1.0
-    SCORE_REGIME_MAX = 0.5
-    SCORE_GP_BONUS   = 0.5
-
-    # FIX-01: SCORE_MIN_PASS bajado de 5.5 a 4.0 — umbral realista con datos reales
-    # Con tend=2.0 + CVD parcial=1.5 + candle=1.0 = 4.5 → señal válida
-    # Antes: necesitaba tend+CVD+OI+candle máximos → casi imposible
-    SCORE_MIN_PASS: float = 4.0
-
-    # ── CVD ──────────────────────────────────────────────────────────────────
-    CVD_LOOKBACK: int = 10
-
-    # FIX-13: OI ajustado — ventana más corta (6 ciclos=60s) más reactiva
-    # OI_MIN_CHANGE en escala real: 0.001% = 0.00001 (mercados líquidos cambian más)
-    OI_MIN_CHANGE:    float = 0.00003   # 0.003% detectable en 1min
-    OI_WINDOW_CYCLES: int   = 6         # 6 × 10s = 60s (más reactivo)
-
-    CONFIRM_VOL_MULT: float = 1.0       # FIX: bajado de 1.1 — volumen promedio también confirma
-
-    # ── Golden Pocket ─────────────────────────────────────────────────────────
-    GP_SWING_LOOKBACK: int   = 50
-    GP_MIN_SWING_PCT:  float = 0.02     # Bajado de 3% a 2% — más señales en cryptos volátiles
-    GP_FIB_LOW:        float = 0.618
-    GP_FIB_HIGH:       float = 0.650
-    GP_ZONE_BUFFER:    float = 0.002
-
-    # ── Trailing Tendencial ───────────────────────────────────────────────────
-    TEND_ATR_MULT: float = 1.5
-    TEND_PERIOD:   int   = 14
-
-    # FIX-10: Liquidaciones — umbral de funding MUCHO más sensible
-    LIQ_OI_HIST_LIMIT: int   = 50
-    LIQ_CLUSTER_PCT:   float = 0.005
-    LIQ_MIN_USDT:      float = 5_000    # Bajado de 10k a 5k
-    LIQ_FUNDING_THRESH: float = 0.00005 # FIX: 0.0003 → 0.00005 (10x más sensible)
-
-    # FIX-09: OB — menos restrictivo
-    OB_DEPTH:       int   = 50
-    OB_BLOCK_MULT:  float = 2.5         # Bajado de 3.0 → 2.5
-    OB_BLOCK_ZONE:  float = 0.004       # Aumentado de 0.3% → 0.4%
-
-    # ── DCA Táctico ───────────────────────────────────────────────────────────
-    DCA_E1_PCT:  float = 0.30
-    DCA_E2_PCT:  float = 0.35
-    DCA_E3_PCT:  float = 0.35
-    DCA_STEP_PCT: float = 0.003
-
-    # ── Leverage Dinámico ─────────────────────────────────────────────────────
-    MAX_LEVERAGE: int = 10
-    MIN_LEVERAGE: int = 3
-
-    # FIX-04/05: Añadidas constantes faltantes para ExecutionSimulator
-    SLIPPAGE_LIMIT:  float = 0.0002   # 0.02% slippage en limit
-    SLIPPAGE_MARKET: float = 0.0005   # 0.05% slippage en market
-    FEE_MAKER:       float = 0.0002   # 0.02% Bitunix maker
-    FEE_TAKER:       float = 0.0005   # 0.05% Bitunix taker
-
-    # FIX-05: Añadido TRACK_MAX_HOURS para TradeEngine
-    TRACK_MAX_HOURS: int = 8          # Máximo horas trackeando un trade
-
-    # ── Gestión de riesgo ─────────────────────────────────────────────────────
-    ACCOUNT_BALANCE:   float = 40.0
-    RISK_PER_TRADE:    float = 0.02
-    MAX_DAILY_TRADES:  int   = 8       # Aumentado de 6 a 8
-    MAX_DAILY_DD:      float = 0.06
-    MAX_STREAK_LOSSES: int   = 3
-    MIN_RR:            float = 1.8     # Bajado de 2.0 a 1.8 — más señales válidas
-    SL_BUFFER_PCT:     float = 0.002
-    TP1_RR:            float = 1.5
-    TP2_RR:            float = 2.5
-    TP3_RR:            float = 4.0
-
-    # ── Sistema ───────────────────────────────────────────────────────────────
-    LOOP_SEC:   int = 10
-    CANDLES:    int = 300
-    COOLDOWN_MIN: int = 10   # FIX-12: Bajado de 20 → 10 min
-    SIGNAL_LOG: str = "birval_v71_signals.json"
-
-    @classmethod
-    def validate(cls) -> bool:
-        missing = [k for k in ["BINANCE_API_KEY", "BINANCE_API_SECRET",
-                                "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"]
-                   if not os.getenv(k)]
-        if missing:
-            log.error(f"Faltan variables de entorno: {missing}")
-        return len(missing) == 0
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TIPOS
-# ══════════════════════════════════════════════════════════════════════════════
-class Dir(Enum):
-    LONG  = "LONG"
-    SHORT = "SHORT"
-
-class TradeStatus(Enum):
-    PENDING = "PENDING"
-    OPEN    = "OPEN"
-    WIN_TP1 = "WIN_TP1"
-    WIN_TP2 = "WIN_TP2"
-    WIN_TP3 = "WIN_TP3"
-    LOSS_SL = "LOSS_SL"
-    EXPIRED = "EXPIRED"
-
-class Regime(Enum):
-    TRENDING_BULL = "TREND_BULL"
-    TRENDING_BEAR = "TREND_BEAR"
-    RANGING       = "RANGING"
-    VOLATILE      = "VOLATILE"
-    UNKNOWN       = "UNKNOWN"
-
-class LevelType(Enum):
-    SUPPORT     = "soporte"
-    RESISTANCE  = "resistencia"
-    GOLDEN_BULL = "golden_pocket_bull"
-    GOLDEN_BEAR = "golden_pocket_bear"
-    LIQ_LONG    = "liq_long"
-    LIQ_SHORT   = "liq_short"
-    OB_BID      = "bloque_bid"
-    OB_ASK      = "bloque_ask"
-
-@dataclass
-class Level:
-    symbol:     str
-    price:      float
-    ltype:      LevelType
-    touches:    int   = 0
-    strength:   float = 0.0
-    source:     str   = "auto"
-    tf:         str   = "5m"
-    usdt_vol:   float = 0.0
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    last_touch: Optional[datetime] = None
-
-    def is_expired(self, hours: int) -> bool:
-        if self.source in ("manual", "liq", "ob"):
-            return False
-        return (datetime.utcnow() - self.created_at).total_seconds() > hours * 3600
-
-    def proximity_pct(self, price: float) -> float:
-        return abs(price - self.price) / (self.price + 1e-9)
-
-@dataclass
-class Tendencial:
-    value:      float = 0.0
-    direction:  str   = "NEUTRAL"
-    last_swing: float = 0.0
-
-@dataclass
-class OBBlock:
-    price:    float
-    side:     str
-    volume:   float
-    usdt_val: float
-
-
-# ── FIX-02/03: ScoreResult completamente corregido ───────────────────────────
-@dataclass
-class ScoreResult:
-    cvd_score:    float = 0.0
-    oi_score:     float = 0.0
-    candle_score: float = 0.0
-    tend_score:   float = 0.0
-    liq_score:    float = 0.0
-    ob_score:     float = 0.0
-    regime_bonus: float = 0.0
-    gp_bonus:     float = 0.0
-
-    cvd_slope:  float = 0.0
-    oi_change:  float = 0.0
-    vol_ratio:  float = 0.0
-
-    total: float = 0.0
-
-    @property
-    def total_pct(self) -> str:
-        # FIX-03: propiedad que antes no existía → causaba AttributeError en SignalLog y Telegram
-        return f"{self.total:.1f}"
-
-    def passed(self) -> bool:
-        # FIX-01: threshold bajado de 5.5 → usa Config.SCORE_MIN_PASS (4.0)
-        return self.total >= 4.0
-
-    def bar(self) -> str:
-        filled = int(self.total)
-        return "█" * filled + "░" * (10 - filled)
-
-    def detail(self) -> str:
-        # FIX-02: antes usaba self.tend etc. que no existían → AttributeError
-        return (
-            f"CVD:{self.cvd_score:.1f} OI:{self.oi_score:.1f} "
-            f"Vela:{self.candle_score:.1f} Tend:{self.tend_score:.1f} "
-            f"OB:{self.ob_score:.1f} Reg:{self.regime_bonus:.1f}"
-        )
-
-
-@dataclass
-class ExecSimulation:
-    entry_ideal:   float = 0.0
-    entry_real:    float = 0.0
-    sl_real:       float = 0.0
-    effective_sl:  float = 0.0   # FIX: campo que se asignaba pero no existía
-    fee_entry:     float = 0.0
-    fee_exit:      float = 0.0
-    total_cost:    float = 0.0
-    breakeven_pct: float = 0.0
-
-
-@dataclass
-class OpenTrade:
-    symbol:     str
-    direction:  Dir
-    entry:      float
-    sl:         float
-    tp1:        float
-    tp2:        float
-    tp3:        float
-    size_usdt:  float
-    leverage:   int
-    open_time:  datetime
-    score:      float
-    level_type: str
-    tp1_hit:    bool  = False
-    trail_sl:   float = 0.0
-    pnl_usdt:   float = 0.0
-    status:     str   = "OPEN"
-
-
-# FIX-04: DCALevels con TODOS los campos que DCABuilder.build() asigna
-@dataclass
-class DCALevels:
-    e1:      float = 0.0
-    e2:      float = 0.0
-    e3:      float = 0.0
-    e1_pct:  float = 0.0   # FIX: campos faltantes → AttributeError al construir
-    e2_pct:  float = 0.0
-    e3_pct:  float = 0.0
-    avg:     float = 0.0
-    sl_avg:  float = 0.0
-    risk_e1: float = 0.0
-    risk_all: float = 0.0
-
-
-# FIX-06: Signal dataclass con todos los campos reales
-@dataclass
-class Signal:
-    symbol:    str
-    direction: Dir
-    level:     Level
-    entry:     float
-    sl:        float
-    tp1:       float
-    tp2:       float
-    tp3:       float
-    sl_pct:    float
-    tp1_pct:   float
-    tp2_pct:   float
-    tp3_pct:   float
-    rr:        float
-    score:     ScoreResult
-    leverage:  int
-    size_usdt: float
-    tf:        str
-    exec_sim:  Optional[ExecSimulation] = None
-    dca:       Optional[DCALevels]      = None
-    tend:      Optional[Tendencial]     = None
-    regime:    Optional[Regime]         = None
-    ob_block:  Optional[OBBlock]        = None
-    is_golden: bool                     = False   # FIX-06: campo faltante
-    execution: Optional[ExecSimulation] = None    # FIX-06: campo faltante (alias de exec_sim)
-    status:    TradeStatus              = field(default=TradeStatus.PENDING)
-    close_price: float                  = 0.0
-    close_time:  Optional[datetime]     = None
-    pnl_usdt:    float                  = 0.0
-    timestamp:   datetime               = field(default_factory=datetime.utcnow)
-
-
-@dataclass
-class RiskState:
-    daily_trades:  int   = 0
-    daily_pnl:     float = 0.0
-    streak_losses: int   = 0
-    streak_wins:   int   = 0
-    total_trades:  int   = 0
-    wins:          int   = 0
-    losses:        int   = 0
-    total_pnl:     float = 0.0
-    paused:        bool  = False
-    pause_reason:  str   = ""
-    last_reset:    datetime = field(default_factory=datetime.utcnow)
-
-    @property
-    def winrate(self) -> float:
-        return self.wins / max(self.total_trades, 1)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# CAPA 1: MARKET DATA
-# ══════════════════════════════════════════════════════════════════════════════
-class MarketData:
-    FAPI = "https://fapi.binance.com"
-
-    def __init__(self, cfg: Config):
-        self.cfg = cfg
-        self._s  = requests.Session()
-        self._s.headers["X-MBX-APIKEY"] = cfg.API_KEY
-        self._oi_hist: Dict[str, deque] = defaultdict(lambda: deque(maxlen=20))
-
-    def _sign(self, params: dict) -> str:
-        q = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
-        # FIX-07: hmac.new → hmac.new (corrección)
-        return hmac.new(self.cfg.API_SECRET.encode(), q.encode(), hashlib.sha256).hexdigest()
-
-    def _get(self, ep: str, params: dict = None, signed: bool = False,
-             retries: int = 3) -> Optional[Any]:
-        url = self.FAPI + ep
-        if signed:
-            params = params or {}
-            params["timestamp"]  = int(time.time() * 1000)
-            params["signature"]  = self._sign(params)
-        for attempt in range(retries):
-            try:
-                r = self._s.get(url, params=params, timeout=8)
-                if r.status_code == 200:
-                    return r.json()
-                elif r.status_code == 429:
-                    log.warning("Rate limit Binance — esperando 2s")
-                    time.sleep(2)
-            except Exception as e:
-                if attempt < retries - 1:
-                    time.sleep(0.5 * (attempt + 1))
-        return None
-
-    async def _async(self, ep: str, params: dict = None, signed: bool = False) -> Optional[Any]:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: self._get(ep, params, signed))
-
-    async def fetch_klines(self, symbol: str, tf: str, limit: int = 300) -> pd.DataFrame:
-        data = await self._async("/fapi/v1/klines",
-                                 {"symbol": symbol, "interval": tf, "limit": limit})
-        if not data:
-            return pd.DataFrame()
-        df = pd.DataFrame(data, columns=[
-            "ts", "open", "high", "low", "close", "volume", "close_time",
-            "quote_vol", "trades", "taker_buy_base", "taker_buy_quote", "ignore"
-        ])
-        for c in ["open", "high", "low", "close", "volume",
-                  "taker_buy_base", "taker_buy_quote"]:
-            df[c] = df[c].astype(float)
-        df["ts"] = pd.to_datetime(df["ts"], unit="ms", utc=True)
-        df.set_index("ts", inplace=True)
-        return df
-
-    async def fetch_oi(self, symbol: str) -> Tuple[float, float]:
-        data = await self._async("/fapi/v1/openInterest", {"symbol": symbol})
-        oi   = float(data.get("openInterest", 0)) if data else 0.0
-        hist   = self._oi_hist[symbol]
-        window = self.cfg.OI_WINDOW_CYCLES
-        prev   = hist[-window] if len(hist) >= window else (hist[0] if hist else oi)
-        hist.append(oi)
-        change = (oi - prev) / (prev + 1e-9)
-        return oi, change
-
-    async def fetch_funding(self, symbol: str) -> float:
-        data = await self._async("/fapi/v1/premiumIndex", {"symbol": symbol})
-        return float(data.get("lastFundingRate", 0)) if data else 0.0
-
-    async def fetch_order_book(self, symbol: str) -> dict:
-        data = await self._async("/fapi/v1/depth",
-                                 {"symbol": symbol, "limit": self.cfg.OB_DEPTH})
-        if not data:
-            return {"bids": [], "asks": [], "imbalance": 0.0, "spread_bps": 3.0}
-        bids = [(float(p), float(q)) for p, q in data.get("bids", [])]
-        asks = [(float(p), float(q)) for p, q in data.get("asks", [])]
-        bv   = sum(q for _, q in bids)
-        av   = sum(q for _, q in asks)
-        imb  = (bv - av) / (bv + av + 1e-9)
-        sp   = (asks[0][0] - bids[0][0]) / bids[0][0] * 10_000 if (bids and asks) else 3.0
-        return {"bids": bids, "asks": asks, "imbalance": float(imb),
-                "spread_bps": float(sp)}
-
-    async def fetch_liq_levels(self, symbol: str) -> List[Tuple[float, float, str]]:
-        """
-        FIX-10: Threshold de funding bajado 10x — detecta más zonas de liquidación.
-        También añade zonas basadas en distancia de precio como proxy adicional.
-        """
-        data = await self._async("/fapi/v1/premiumIndex", {"symbol": symbol})
-        if not data:
-            return []
-        mark  = float(data.get("markPrice", 0))
-        fund  = float(data.get("lastFundingRate", 0))
-        oi, _ = await self.fetch_oi(symbol)
-        price = mark
-        if price <= 0:
-            return []
-
-        zones = []
-        thresh = self.cfg.LIQ_FUNDING_THRESH  # FIX: 0.00005 en lugar de 0.0003
-
-        if fund > thresh:
-            # Funding positivo → muchos longs acumulados → liquidaciones debajo
-            for mult in [0.97, 0.95, 0.93]:
-                liq_price = price * mult
-                est_usdt  = oi * price * abs(fund) * 500
-                zones.append((liq_price, est_usdt, "long"))
-        elif fund < -thresh:
-            # Funding negativo → muchos shorts acumulados → liquidaciones arriba
-            for mult in [1.03, 1.05, 1.07]:
-                liq_price = price * mult
-                est_usdt  = oi * price * abs(fund) * 500
-                zones.append((liq_price, est_usdt, "short"))
-        else:
-            # Sin funding significativo → añadir zonas de probabilidad basadas en ATR
-            # Proxy: distancias estándar donde se acumulan stops
-            for mult in [0.97, 1.03]:
-                tipo      = "long" if mult < 1 else "short"
-                est_usdt  = oi * price * 0.0001
-                zones.append((price * mult, est_usdt, tipo))
-
-        return zones
-
-    async def fetch_price(self, symbol: str) -> float:
-        data = await self._async("/fapi/v1/ticker/price", {"symbol": symbol})
-        return float(data.get("price", 0)) if data else 0.0
-
-    async def fetch_balance(self) -> float:
-        data = await self._async("/fapi/v2/account", signed=True)
-        if data:
-            for asset in data.get("assets", []):
-                if asset["asset"] == "USDT":
-                    return float(asset["walletBalance"])
-        return self.cfg.ACCOUNT_BALANCE
-
-    def close(self):
-        self._s.close()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TRAILING TENDENCIAL
-# ══════════════════════════════════════════════════════════════════════════════
-class TrailingTendencial:
-    def __init__(self, cfg: Config):
-        self.cfg    = cfg
-        self._state: Dict[str, Tendencial] = {}
-
-    def compute(self, df: pd.DataFrame, symbol: str) -> Tendencial:
-        if len(df) < self.cfg.TEND_PERIOD + 5:
-            return Tendencial()
-
-        closes = df["close"].values
-        atr    = self._atr(df, self.cfg.TEND_PERIOD)
-
-        if symbol not in self._state:
-            self._state[symbol] = Tendencial(value=closes[-1], direction="NEUTRAL")
-
-        tend = self._state[symbol]
-        step = atr * self.cfg.TEND_ATR_MULT
-
-        for i in range(max(0, len(closes) - 20), len(closes)):
-            c = closes[i]
-            if tend.direction in ("BULL", "NEUTRAL"):
-                if c > tend.value + step:
-                    tend.value     = c - step * 0.5
-                    tend.direction = "BULL"
-                elif c < tend.value - step * 0.8:
-                    tend.value     = c + step * 0.5
-                    tend.direction = "BEAR"
-            else:
-                if c < tend.value - step:
-                    tend.value     = c + step * 0.5
-                    tend.direction = "BEAR"
-                elif c > tend.value + step * 0.8:
-                    tend.value     = c - step * 0.5
-                    tend.direction = "BULL"
-
-        self._state[symbol] = tend
-        return tend
-
-    def _atr(self, df: pd.DataFrame, p: int = 14) -> float:
-        hl = df["high"] - df["low"]
-        hc = (df["high"] - df["close"].shift()).abs()
-        lc = (df["low"]  - df["close"].shift()).abs()
-        tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
-        return float(tr.ewm(com=p - 1, min_periods=p).mean().iloc[-1])
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ORDER BOOK ANALYZER
-# ══════════════════════════════════════════════════════════════════════════════
-class OrderBookAnalyzer:
-    def __init__(self, cfg: Config):
-        self.cfg = cfg
-        self._block_history: Dict[str, Dict[float, int]] = defaultdict(dict)
-        # FIX-09: Reducido de 3 → 2 ciclos (20s en lugar de 30s)
-        self.MIN_PERSIST_CYCLES = 2
-
-    def find_blocks(self, ob: dict, current_price: float,
-                    symbol: str = "") -> List[OBBlock]:
-        blocks = []
-        if not ob.get("bids") or not ob.get("asks"):
-            return blocks
-
-        bids      = ob["bids"]
-        asks      = ob["asks"]
-        all_vols  = [q for _, q in bids] + [q for _, q in asks]
-        if not all_vols:
-            return blocks
-        avg_vol   = np.mean(all_vols)
-        threshold = avg_vol * self.cfg.OB_BLOCK_MULT
-
-        raw_blocks = []
-        for price, vol in bids:
-            if vol >= threshold:
-                raw_blocks.append(OBBlock(price=price, side="bid",
-                                          volume=vol, usdt_val=price * vol))
-        for price, vol in asks:
-            if vol >= threshold:
-                raw_blocks.append(OBBlock(price=price, side="ask",
-                                          volume=vol, usdt_val=price * vol))
-
-        if symbol:
-            hist = self._block_history[symbol]
-            new_hist = {}
-            for b in raw_blocks:
-                key = round(b.price, 6)
-                new_hist[key] = hist.get(key, 0) + 1
-            self._block_history[symbol] = new_hist
-            blocks = [b for b in raw_blocks
-                      if new_hist.get(round(b.price, 6), 0) >= self.MIN_PERSIST_CYCLES]
-        else:
-            blocks = raw_blocks
-
-        return sorted(blocks, key=lambda x: x.usdt_val, reverse=True)
-
-    def nearest_block(self, blocks: List[OBBlock], price: float,
-                      direction: Dir) -> Optional[OBBlock]:
-        if not blocks:
-            return None
-        if direction == Dir.LONG:
-            candidates = [b for b in blocks
-                          if b.side == "bid"
-                          and price * 0.988 <= b.price <= price * 1.005]
-        else:
-            candidates = [b for b in blocks
-                          if b.side == "ask"
-                          and price * 0.995 <= b.price <= price * 1.012]
-        if not candidates:
-            return None
-        return max(candidates, key=lambda x: x.usdt_val)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# DCA BUILDER
-# ══════════════════════════════════════════════════════════════════════════════
-class DCABuilder:
-    def __init__(self, cfg: Config):
-        self.cfg = cfg
-
-    def build(self, direction: Dir, entry: float,
-              sl: float, balance: float) -> DCALevels:
-        is_long = direction == Dir.LONG
-        sign    = 1 if is_long else -1
-        step    = self.cfg.DCA_STEP_PCT
-
-        e1 = entry
-        e2 = entry * (1 - sign * step)
-        e3 = entry * (1 - sign * step * 2)
-
-        e1_w = self.cfg.DCA_E1_PCT
-        e2_w = self.cfg.DCA_E2_PCT
-        e3_w = self.cfg.DCA_E3_PCT
-        avg  = e1 * e1_w + e2 * e2_w + e3 * e3_w
-
-        sl_dist_avg = abs(avg - sl)
-        sl_avg      = avg - sign * sl_dist_avg * 0.9
-        sl_pct_avg  = abs(avg - sl_avg) / (avg + 1e-9)
-
-        def pct(target: float) -> float:
-            raw = (target - entry) / (entry + 1e-9) * 100
-            return round(raw if is_long else -raw, 3)
-
-        return DCALevels(
-            e1=round(e1, 6),   e2=round(e2, 6),   e3=round(e3, 6),
-            e1_pct=pct(e1),    e2_pct=pct(e2),    e3_pct=pct(e3),   # FIX-04
-            avg=round(avg, 6), sl_avg=round(sl_avg, 6)
-        )
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# LEVEL DETECTOR
-# ══════════════════════════════════════════════════════════════════════════════
-class LevelDetector:
-    def __init__(self, cfg: Config):
-        self.cfg = cfg
-
-    def detect_sr(self, df: pd.DataFrame, symbol: str, tf: str) -> List[Level]:
-        if len(df) < 50:
-            return []
-        levels  = []
-        highs   = df["high"].values
-        lows    = df["low"].values
-        vols    = df["volume"].values
-        vol_avg = np.mean(vols[-50:])
-        n       = len(df)
-
-        for i in range(5, n - 5):
-            if (highs[i] >= highs[i-1] and highs[i] >= highs[i-2] and
-                    highs[i] >= highs[i+1] and highs[i] >= highs[i+2]):
-                price          = highs[i]
-                touches, vol_s = self._count_touches(highs, lows, vols, price)
-                if touches >= self.cfg.LEVEL_MIN_TOUCHES:
-                    strength = min(touches / 5, 1.0) * min(
-                        vol_s / (vol_avg * touches + 1e-9), 1.5)
-                    levels.append(Level(symbol=symbol, price=round(price, 6),
-                                        ltype=LevelType.RESISTANCE, touches=touches,
-                                        strength=round(strength, 2), source="auto", tf=tf))
-
-            if (lows[i] <= lows[i-1] and lows[i] <= lows[i-2] and
-                    lows[i] <= lows[i+1] and lows[i] <= lows[i+2]):
-                price          = lows[i]
-                touches, vol_s = self._count_touches(highs, lows, vols, price)
-                if touches >= self.cfg.LEVEL_MIN_TOUCHES:
-                    strength = min(touches / 5, 1.0) * min(
-                        vol_s / (vol_avg * touches + 1e-9), 1.5)
-                    levels.append(Level(symbol=symbol, price=round(price, 6),
-                                        ltype=LevelType.SUPPORT, touches=touches,
-                                        strength=round(strength, 2), source="auto", tf=tf))
-
-        levels = self._merge(levels)
-        return sorted(levels, key=lambda x: x.strength, reverse=True)[:15]
-
-    def detect_liq_levels(self, liq_zones: List[Tuple[float, float, str]],
-                           symbol: str) -> List[Level]:
-        levels = []
-        for price, usdt_val, tipo in liq_zones:
-            if usdt_val < self.cfg.LIQ_MIN_USDT:
-                continue
-            ltype    = LevelType.LIQ_LONG if tipo == "long" else LevelType.LIQ_SHORT
-            strength = min(usdt_val / 5_000_000, 1.0)
-            levels.append(Level(
-                symbol=symbol, price=round(price, 6), ltype=ltype,
-                touches=0, strength=round(strength, 2),
-                source="liq", usdt_vol=usdt_val
-            ))
-        return levels
-
-    def detect_ob_levels(self, blocks: List[OBBlock], symbol: str) -> List[Level]:
-        levels = []
-        for block in blocks[:5]:
-            ltype    = LevelType.OB_BID if block.side == "bid" else LevelType.OB_ASK
-            strength = min(block.usdt_val / 300_000, 1.0)
-            levels.append(Level(
-                symbol=symbol, price=round(block.price, 6), ltype=ltype,
-                touches=0, strength=round(strength, 2),
-                source="ob", usdt_vol=block.usdt_val
-            ))
-        return levels
-
-    def detect_golden_pocket(self, df: pd.DataFrame, symbol: str,
-                              tf: str) -> List[Level]:
-        if len(df) < self.cfg.GP_SWING_LOOKBACK:
-            return []
-
-        levels    = []
-        highs     = df["high"].values
-        lows      = df["low"].values
-        closes    = df["close"].values
-        n         = min(self.cfg.GP_SWING_LOOKBACK, len(df))
-        recent    = slice(-n, None)
-
-        swing_high = float(np.max(highs[recent]))
-        swing_low  = float(np.min(lows[recent]))
-        swing_size = (swing_high - swing_low) / (swing_low + 1e-9)
-
-        if swing_size < self.cfg.GP_MIN_SWING_PCT:
-            return []
-
-        idx_high = int(np.argmax(highs[recent])) + (len(df) - n)
-        idx_low  = int(np.argmin(lows[recent]))  + (len(df) - n)
-
-        gp_bull_low  = swing_high - (swing_high - swing_low) * self.cfg.GP_FIB_HIGH
-        gp_bull_high = swing_high - (swing_high - swing_low) * self.cfg.GP_FIB_LOW
-        gp_bull_mid  = (gp_bull_low + gp_bull_high) / 2
-
-        if idx_low < idx_high:
-            strength = min(swing_size / 0.10, 1.0)
-            levels.append(Level(
-                symbol=symbol, price=round(gp_bull_mid, 6),
-                ltype=LevelType.GOLDEN_BULL,
-                touches=0, strength=round(strength * 0.85, 2),
-                source="fib", tf=tf, usdt_vol=swing_size
-            ))
-
-        gp_bear_low  = swing_low + (swing_high - swing_low) * self.cfg.GP_FIB_LOW
-        gp_bear_high = swing_low + (swing_high - swing_low) * self.cfg.GP_FIB_HIGH
-        gp_bear_mid  = (gp_bear_low + gp_bear_high) / 2
-
-        if idx_high < idx_low:
-            strength = min(swing_size / 0.10, 1.0)
-            levels.append(Level(
-                symbol=symbol, price=round(gp_bear_mid, 6),
-                ltype=LevelType.GOLDEN_BEAR,
-                touches=0, strength=round(strength * 0.85, 2),
-                source="fib", tf=tf, usdt_vol=swing_size
-            ))
-
-        return levels
-
-    def _count_touches(self, highs, lows, vols, price) -> Tuple[int, float]:
-        zone  = price * self.cfg.LEVEL_TOUCH_ZONE
-        count = 0; vol_s = 0.0
-        for i in range(len(highs)):
-            if abs(highs[i] - price) < zone or abs(lows[i] - price) < zone:
-                count += 1; vol_s += vols[i]
-        return count, vol_s
-
-    def _merge(self, levels: List[Level]) -> List[Level]:
-        if not levels:
-            return []
-        merged = []; used = set()
-        for i, lv in enumerate(levels):
-            if i in used:
-                continue
-            group = [lv]
-            for j, lv2 in enumerate(levels[i + 1:], i + 1):
-                if j not in used and abs(lv.price - lv2.price) / lv.price < self.cfg.LEVEL_MERGE_PCT:
-                    group.append(lv2); used.add(j)
-            merged.append(max(group, key=lambda x: x.touches))
-        return merged
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SCORE ENGINE — FIX-14: scoring más gradual y sensible
-# ══════════════════════════════════════════════════════════════════════════════
-class ScoreEngine:
-    def __init__(self, cfg: Config):
-        self.cfg = cfg
-
-    def compute(self, df: pd.DataFrame, direction: Dir, oi_chg: float,
-                tend: Tendencial, liq_zones: List[Level], ob_block: Optional[OBBlock],
-                price: float, regime: Regime, is_golden: bool = False) -> ScoreResult:
-        sr      = ScoreResult()
-        is_long = direction == Dir.LONG
-
-        # ── CVD (0 → 2.5) — FIX-14: más gradual ────────────────────────────
-        v     = df["volume"]
-        tb    = df.get("taker_buy_base", v * 0.5)
-        delta = (tb - (v - tb)).values
-        cvd   = np.cumsum(delta)
-        n     = min(self.cfg.CVD_LOOKBACK, len(cvd))
-        if n >= 3:
-            slope = (cvd[-1] - cvd[-n]) / (abs(cvd[-n]) + 1e-9)
-            sr.cvd_slope = round(float(slope), 4)
-            if is_long:
-                if slope > 0.3:    sr.cvd_score = self.cfg.SCORE_CVD_MAX         # 2.5
-                elif slope > 0.05: sr.cvd_score = self.cfg.SCORE_CVD_MAX * 0.7   # 1.75  FIX
-                elif slope > 0.0:  sr.cvd_score = self.cfg.SCORE_CVD_MAX * 0.3   # 0.75  FIX
-            else:
-                if slope < -0.3:   sr.cvd_score = self.cfg.SCORE_CVD_MAX
-                elif slope < -0.05: sr.cvd_score = self.cfg.SCORE_CVD_MAX * 0.7
-                elif slope < 0.0:  sr.cvd_score = self.cfg.SCORE_CVD_MAX * 0.3
-
-        # ── OI (0 → 1.5) ─────────────────────────────────────────────────────
-        sr.oi_change = round(oi_chg, 6)
-        thr          = self.cfg.OI_MIN_CHANGE
-        if abs(oi_chg) > thr * 10:  sr.oi_score = self.cfg.SCORE_OI_MAX
-        elif abs(oi_chg) > thr * 3: sr.oi_score = self.cfg.SCORE_OI_MAX * 0.6
-        elif abs(oi_chg) > thr:     sr.oi_score = self.cfg.SCORE_OI_MAX * 0.3
-
-        # ── Vela (0 → 1.5) ───────────────────────────────────────────────────
-        last    = df.iloc[-1]; prev = df.iloc[-2] if len(df) >= 2 else last
-        vol_avg = float(df["volume"].tail(20).mean())
-        vol_r   = float(last["volume"]) / (vol_avg + 1e-9)
-        sr.vol_ratio = round(vol_r, 2)
-
-        last_bull = float(last["close"]) > float(last["open"])
-        prev_bull = float(prev["close"]) > float(prev["open"])
-        best_vol  = max(
-            vol_r if (is_long == last_bull) else 0,
-            float(prev["volume"]) / (vol_avg + 1e-9) if (is_long == prev_bull) else 0
-        )
-        candle_dir = (is_long and (last_bull or prev_bull)) or (not is_long and (not last_bull or not prev_bull))
-        if candle_dir:
-            if best_vol >= 1.5:  sr.candle_score = self.cfg.SCORE_CANDLE_MAX
-            elif best_vol >= 1.0: sr.candle_score = self.cfg.SCORE_CANDLE_MAX * 0.6
-            elif best_vol >= 0.7: sr.candle_score = self.cfg.SCORE_CANDLE_MAX * 0.3
-
-        # ── Tendencial (0 → 2.0) ─────────────────────────────────────────────
-        if is_long:
-            if tend.direction == "BULL":      sr.tend_score = self.cfg.SCORE_TEND_MAX
-            elif tend.direction == "NEUTRAL": sr.tend_score = self.cfg.SCORE_TEND_MAX * 0.5
-        else:
-            if tend.direction == "BEAR":      sr.tend_score = self.cfg.SCORE_TEND_MAX
-            elif tend.direction == "NEUTRAL": sr.tend_score = self.cfg.SCORE_TEND_MAX * 0.5
-
-        # ── Liquidación (0 → 1.0) ─────────────────────────────────────────────
-        if liq_zones:
-            for lz in liq_zones:
-                dist = lz.proximity_pct(price)
-                if dist < 0.015:   sr.liq_score = self.cfg.SCORE_LIQ_MAX; break
-                elif dist < 0.04:  sr.liq_score = self.cfg.SCORE_LIQ_MAX * 0.5; break
-
-        # ── OB (0 → 1.0) ─────────────────────────────────────────────────────
-        if ob_block:
-            dist = abs(ob_block.price - price) / (price + 1e-9)
-            if dist < 0.002:   sr.ob_score = self.cfg.SCORE_OB_MAX
-            elif dist < 0.005: sr.ob_score = self.cfg.SCORE_OB_MAX * 0.5
-
-        # ── Régimen bonus (0 → 0.5) ───────────────────────────────────────────
-        if is_long and hasattr(regime, "value") and "BULL" in str(regime.value):
-            sr.regime_bonus = self.cfg.SCORE_REGIME_MAX
-        elif not is_long and hasattr(regime, "value") and "BEAR" in str(regime.value):
-            sr.regime_bonus = self.cfg.SCORE_REGIME_MAX
-        elif hasattr(regime, "value") and "RANG" in str(regime.value):
-            sr.regime_bonus = self.cfg.SCORE_REGIME_MAX * 0.3
-
-        # ── Golden Pocket bonus ───────────────────────────────────────────────
-        if is_golden:
-            sr.gp_bonus = self.cfg.SCORE_GP_BONUS
-
-        sr.total = round(min(
-            sr.cvd_score + sr.oi_score + sr.candle_score +
-            sr.tend_score + sr.liq_score + sr.ob_score +
-            sr.regime_bonus + sr.gp_bonus, 10.0
-        ), 2)
-        return sr
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# MARKET REGIME DETECTOR
-# ══════════════════════════════════════════════════════════════════════════════
-class MarketRegimeDetector:
-    def __init__(self, cfg: Config):
-        self.cfg = cfg
-
-    def detect(self, df: pd.DataFrame) -> Regime:
-        if len(df) < self.cfg.REGIME_LOOKBACK + 5:
-            return Regime.UNKNOWN
-        closes = df["close"].values
-        highs  = df["high"].values
-        lows   = df["low"].values
-        n      = self.cfg.REGIME_LOOKBACK
-        adx    = self._adx(highs, lows, closes, 14)
-        atr    = self._atr(highs, lows, closes, 14)
-        atr_h  = self._atr(highs, lows, closes, 50) if len(df) >= 55 else atr
-        atr_rel_high = atr > atr_h * self.cfg.REGIME_ATR_MULT
-        x      = np.arange(n); y = closes[-n:]
-        r2     = float(np.corrcoef(x, y)[0, 1] ** 2) if y.std() > 0 else 0.0
-        price_up = closes[-1] > closes[-n]
-        if atr_rel_high and adx < 20:
-            return Regime.VOLATILE
-        if adx > self.cfg.REGIME_ADX_TREND and r2 > 0.60:
-            return Regime.TRENDING_BULL if price_up else Regime.TRENDING_BEAR
-        if adx < self.cfg.REGIME_ADX_WEAK:
-            return Regime.RANGING
-        return Regime.RANGING
-
-    def _adx(self, h, l, c, p=14) -> float:
-        if len(h) < p * 2:
-            return 20.0
-        pdm, mdm, tr = [], [], []
-        for i in range(1, len(h)):
-            up = h[i] - h[i-1]; dn = l[i-1] - l[i]
-            pdm.append(up if up > dn and up > 0 else 0)
-            mdm.append(dn if dn > up and dn > 0 else 0)
-            tr.append(max(h[i]-l[i], abs(h[i]-c[i-1]), abs(l[i]-c[i-1])))
-        def w(a, p):
-            s = sum(a[:p]); r = [s]
-            for v in a[p:]: s = s - s/p + v; r.append(s)
-            return r
-        st = w(tr, p); sp = w(pdm, p); sm = w(mdm, p)
-        dp = [100*s/t if t else 0 for s, t in zip(sp, st)]
-        dm = [100*s/t if t else 0 for s, t in zip(sm, st)]
-        dx = [100*abs(p-m)/(p+m) if (p+m) else 0 for p, m in zip(dp, dm)]
-        adx = w(dx, p)
-        return float(adx[-1]) if adx else 20.0
-
-    def _atr(self, h, l, c, p=14) -> float:
-        if len(h) < p + 1:
-            return float(h[-1] - l[-1])
-        trs = [max(h[i]-l[i], abs(h[i]-c[i-1]), abs(l[i]-c[i-1])) for i in range(1, len(h))]
-        atr = sum(trs[:p]) / p
-        for t in trs[p:]: atr = (atr*(p-1) + t) / p
-        return float(atr)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# EXECUTION SIMULATOR — FIX-05: usa Config.SLIPPAGE_* y Config.FEE_*
-# ══════════════════════════════════════════════════════════════════════════════
-class ExecutionSimulator:
-    def __init__(self, cfg: Config):
-        self.cfg = cfg
-
-    def simulate_entry(self, direction: Dir, price: float,
-                       is_limit: bool = True) -> ExecSimulation:
-        is_long  = direction == Dir.LONG
-        slip     = self.cfg.SLIPPAGE_LIMIT if is_limit else self.cfg.SLIPPAGE_MARKET
-        sign_f   = (1 if is_long else -1) * 0.3 if is_limit else (1 if is_long else -1)
-        fill     = price * (1 + slip * sign_f)
-        fee_e    = fill * (self.cfg.FEE_MAKER if is_limit else self.cfg.FEE_TAKER)
-        fee_x    = fill * self.cfg.FEE_TAKER
-        total_c  = fee_e + fee_x
-        be_pct   = total_c / (fill + 1e-9) * 100
-
-        ex              = ExecSimulation()
-        ex.entry_ideal  = price
-        ex.entry_real   = round(fill, 6)
-        ex.fee_entry    = round(fee_e, 4)
-        ex.fee_exit     = round(fee_x, 4)
-        ex.total_cost   = round(total_c, 4)
-        ex.breakeven_pct = round(be_pct, 4)
-        return ex
-
-    def simulate_sl(self, direction: Dir, sl_price: float) -> float:
-        is_long = direction == Dir.LONG
-        return round(sl_price * (1 - self.cfg.SLIPPAGE_MARKET * (1 if is_long else -1)), 6)
-
-    def effective_risk_pct(self, direction: Dir, entry: float, sl: float) -> float:
-        is_long = direction == Dir.LONG
-        fill    = entry * (1 + self.cfg.SLIPPAGE_LIMIT * (1 if is_long else -1) * 0.3)
-        eff_sl  = self.simulate_sl(direction, sl)
-        sl_pct  = abs(fill - eff_sl) / (fill + 1e-9)
-        fee_pct = self.cfg.FEE_MAKER + self.cfg.FEE_TAKER
-        return round(sl_pct + fee_pct, 4)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# CORRELATION FILTER
-# ══════════════════════════════════════════════════════════════════════════════
-class CorrelationFilter:
-    GROUPS = {
-        "L1":     {"SOLUSDT", "AVAXUSDT", "ADAUSDT"},
-        "L2":     {"ARBUSDT", "OPUSDT"},
-        "MEME":   {"DOGEUSDT", "TRUMPUSDT"},
-        "ORACLE": {"LINKUSDT", "TAOUSDT"},
-        "OTHER":  {"XRPUSDT", "HBARUSDT", "BNBUSDT"},
-    }
-    COOLDOWN = 20
-
-    def __init__(self):
-        self._loss_t: Dict[str, datetime] = {}
-        self._open: set = set()
-
-    def can_open(self, symbol: str) -> Tuple[bool, str]:
-        gname = self._group(symbol)
-        if gname:
-            group = self.GROUPS[gname]
-            if any(s in self._open for s in group if s != symbol):
-                active = [s for s in group if s in self._open and s != symbol]
-                return False, f"Corr[{gname}]: {active[0]} ya abierto"
-            last = self._loss_t.get(gname)
-            if last:
-                mins = (datetime.utcnow() - last).total_seconds() / 60
-                if mins < self.COOLDOWN:
-                    return False, f"Corr[{gname}]: pérdida reciente ({int(self.COOLDOWN-mins)}min)"
-        return True, ""
-
-    def register_open(self, symbol: str):
-        self._open.add(symbol)
-
-    def register_close(self, symbol: str, is_loss: bool):
-        self._open.discard(symbol)
-        if is_loss:
-            g = self._group(symbol)
-            if g:
-                self._loss_t[g] = datetime.utcnow()
-
-    def _group(self, symbol: str) -> Optional[str]:
-        for n, g in self.GROUPS.items():
-            if symbol in g:
-                return n
-        return None
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TRADE ENGINE
-# ══════════════════════════════════════════════════════════════════════════════
-class TradeEngine:
-    def __init__(self, cfg: Config, md: MarketData, sig_log, risk, corr, tg):
-        self.cfg     = cfg
-        self.md      = md
-        self.sig_log = sig_log
-        self.risk    = risk
-        self.corr    = corr
-        self.tg      = tg
-        self._open: Dict[str, Signal] = {}
-
-    def register(self, sig: Signal):
-        sig.status = TradeStatus.OPEN
-        self._open[sig.symbol] = sig
-
-    async def tick(self):
-        closed = []
-        for symbol, sig in list(self._open.items()):
-            if sig.status != TradeStatus.OPEN:
-                closed.append(symbol); continue
-
-            age_h = (datetime.utcnow() - sig.timestamp).total_seconds() / 3600
-            if age_h > self.cfg.TRACK_MAX_HOURS:   # FIX-05: usa config
-                sig.status = TradeStatus.EXPIRED
-                self.sig_log.update(sig)
-                closed.append(symbol); continue
-
-            price = await self.md.fetch_price(symbol)
-            if price <= 0:
-                continue
-
-            is_long = sig.direction == Dir.LONG
-            eff_sl  = (sig.execution.effective_sl if sig.execution and sig.execution.effective_sl
-                       else sig.sl)
-
-            result  = None; pnl_pct = 0.0
-            if is_long:
-                if price >= sig.tp3:   result = TradeStatus.WIN_TP3; pnl_pct = sig.tp3_pct / 100
-                elif price >= sig.tp2: result = TradeStatus.WIN_TP2; pnl_pct = sig.tp2_pct / 100
-                elif price >= sig.tp1: result = TradeStatus.WIN_TP1; pnl_pct = sig.tp1_pct / 100
-                elif price <= eff_sl:  result = TradeStatus.LOSS_SL; pnl_pct = -(abs(sig.entry - price) / sig.entry)
-            else:
-                if price <= sig.tp3:   result = TradeStatus.WIN_TP3; pnl_pct = sig.tp3_pct / 100
-                elif price <= sig.tp2: result = TradeStatus.WIN_TP2; pnl_pct = sig.tp2_pct / 100
-                elif price <= sig.tp1: result = TradeStatus.WIN_TP1; pnl_pct = sig.tp1_pct / 100
-                elif price >= eff_sl:  result = TradeStatus.LOSS_SL; pnl_pct = -(abs(sig.entry - price) / sig.entry)
-
-            if result:
-                sig.status      = result
-                sig.close_price = price
-                sig.close_time  = datetime.utcnow()
-                sig.pnl_usdt    = sig.size_usdt * pnl_pct * sig.leverage
-                is_win          = result != TradeStatus.LOSS_SL
-                self.risk.record(sig.pnl_usdt)
-                self.corr.register_close(sig.symbol, not is_win)
-                self.sig_log.update(sig)
-                closed.append(symbol)
-
-                emoji = "✅" if is_win else "❌"
-                self.tg.send(
-                    f"{emoji} <b>CIERRE {result.value}</b>\n\n"
-                    f"<b>{symbol}</b> {sig.direction.value}\n"
-                    f"Entrada: <code>${sig.entry:.6g}</code>\n"
-                    f"Cierre:  <code>${price:.6g}</code>\n"
-                    f"PnL: <b>{sig.pnl_usdt:+.2f} USDT</b>\n"
-                    f"Score: {sig.score.total:.1f}/10\n"
-                    f"<i>@birVal_signals_bot</i>"
-                )
-                log.info(f"CIERRE {symbol} {result.value} PnL={sig.pnl_usdt:+.2f}")
-
-        for s in closed:
-            self._open.pop(s, None)
-
-    @property
-    def open_count(self) -> int:
-        return len(self._open)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# RISK MANAGER
-# ══════════════════════════════════════════════════════════════════════════════
-class RiskManager:
-    def __init__(self, cfg: Config):
-        self.cfg   = cfg
-        self.state = RiskState()
-
-    def can_trade(self, balance: float, symbol: str = "") -> Tuple[bool, str]:
-        rs = self.state
-        if rs.paused:
-            return False, f"Pausado: {rs.pause_reason}"
-        if rs.daily_trades >= self.cfg.MAX_DAILY_TRADES:
-            return False, f"Límite {self.cfg.MAX_DAILY_TRADES} ops/día alcanzado"
-        if rs.streak_losses >= self.cfg.MAX_STREAK_LOSSES:
-            rs.paused      = True
-            rs.pause_reason = f"Racha {rs.streak_losses} pérdidas consecutivas"
-            return False, rs.pause_reason
-        if rs.daily_pnl < -balance * self.cfg.MAX_DAILY_DD:
-            rs.paused      = True
-            rs.pause_reason = f"Drawdown diario ${rs.daily_pnl:.2f}"
-            return False, rs.pause_reason
-        return True, ""
-
-    def record(self, pnl: float):
-        rs              = self.state
-        rs.daily_pnl   += pnl; rs.total_pnl   += pnl
-        rs.total_trades += 1;  rs.daily_trades += 1
-        if pnl > 0:
-            rs.wins          += 1; rs.streak_wins  += 1; rs.streak_losses = 0
-        else:
-            rs.losses        += 1; rs.streak_losses += 1; rs.streak_wins  = 0
-
-    def reset_daily(self):
-        self.state.daily_pnl    = 0.0
-        self.state.daily_trades = 0
-        self.state.last_reset   = datetime.utcnow()
-
-    def resume(self):
-        self.state.paused        = False
-        self.state.pause_reason  = ""
-        self.state.streak_losses = 0
-        self.reset_daily()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SIGNAL LOG
-# ══════════════════════════════════════════════════════════════════════════════
-class SignalLog:
-    def __init__(self, path: str):
-        self.path  = path
-        self._data: List[dict] = self._load()
-
-    def _load(self) -> List[dict]:
-        try:
-            if os.path.exists(self.path):
-                with open(self.path) as f:
-                    return json.load(f)
-        except:
-            pass
-        return []
-
-    def _save(self):
-        try:
-            with open(self.path, "w") as f:
-                json.dump(self._data[-500:], f, indent=2, default=str)
-        except:
-            pass
-
-    def add(self, sig: Signal):
-        self._data.append({
-            "ts":        sig.timestamp.isoformat(),
-            "symbol":    sig.symbol,
-            "direction": sig.direction.value,
-            "entry":     sig.entry,
-            "sl":        sig.sl,
-            "tp1":       sig.tp1,
-            "level":     sig.level.price,
-            "ltype":     sig.level.ltype.value,
-            "score":     round(sig.score.total, 3),
-            "score_str": sig.score.total_pct,   # FIX-03: total_pct ahora existe
-            "regime":    sig.regime.value if sig.regime else "—",
-            "leverage":  sig.leverage,
-            "rr":        sig.rr,
-            "status":    "PENDING",
-        })
-        self._save()
-
-    def update(self, sig: Signal):
-        for entry in reversed(self._data):
-            if (entry["symbol"] == sig.symbol and
-                    entry["entry"] == sig.entry):
-                entry["status"]      = sig.status.value
-                entry["close_price"] = getattr(sig, "close_price", 0)
-                entry["pnl_usdt"]    = getattr(sig, "pnl_usdt", 0)
-                break
-        self._save()
-
-    def stats(self) -> dict:
-        total  = len(self._data)
-        wins   = sum(1 for d in self._data if "WIN" in d.get("status", ""))
-        losses = sum(1 for d in self._data if "LOSS" in d.get("status", ""))
-        pnl    = sum(d.get("pnl_usdt", 0) for d in self._data)
-        wr     = wins / max(wins + losses, 1)
-        return {"total": total, "wins": wins, "losses": losses,
-                "winrate": wr, "pnl": round(pnl, 2)}
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TELEGRAM
-# ══════════════════════════════════════════════════════════════════════════════
-class Telegram:
-    def __init__(self, cfg: Config):
-        self.cfg   = cfg
-        self.base  = f"https://api.telegram.org/bot{cfg.TG_TOKEN}"
-        self._last = 0
-
-    def send(self, text: str) -> bool:
-        try:
-            r = requests.post(
-                f"{self.base}/sendMessage",
-                json={"chat_id": self.cfg.TG_CHAT, "text": text,
-                      "parse_mode": "HTML"},
-                timeout=10
-            )
-            return r.status_code == 200
-        except Exception as e:
-            log.warning(f"Telegram error: {e}")
-            return False
-
-    def send_signal(self, sig: Signal) -> bool:
-        is_long   = sig.direction == Dir.LONG
-        emoji     = "🟢" if is_long else "🔴"
-        dir_label = "LONG" if is_long else "SHORT"
-        ltype     = sig.level.ltype.value.upper()
-        is_gp     = sig.level.ltype in (LevelType.GOLDEN_BULL, LevelType.GOLDEN_BEAR)
-        lv_icon   = "🌟" if is_gp else ("💧" if "liq" in sig.level.ltype.value else "📍")
-        sc        = sig.score
-        tend_dir  = sig.tend.direction if sig.tend else "—"
-        tend_ico  = "📈" if tend_dir == "BULL" else ("📉" if tend_dir == "BEAR" else "➡️")
-        reg_str   = sig.regime.value if sig.regime else "—"
-        notional  = sig.size_usdt * sig.leverage
-
-        exec_line = ""
-        if sig.exec_sim:
-            e = sig.exec_sim
-            exec_line = (
-                f"\n⚙️ Ejecución: entrada ~<code>${e.entry_real:.6g}</code> | "
-                f"fees ~${e.total_cost:.3f} | BE: +{e.breakeven_pct:.3f}%"
-            )
-
-        dca_line = ""
-        if sig.dca:
-            d   = sig.dca
-            cap = self.cfg.ACCOUNT_BALANCE
-            dca_line = (
-                f"\n\n📊 <b>DCA TÁCTICO:</b>\n"
-                f"├─ E1: <code>${d.e1:.6g}</code> (~${cap*0.30:.1f} USDT)\n"
-                f"├─ E2: <code>${d.e2:.6g}</code> (~${cap*0.35:.1f} USDT)\n"
-                f"├─ E3: <code>${d.e3:.6g}</code> (~${cap*0.35:.1f} USDT)\n"
-                f"├─ Avg: <code>${d.avg:.6g}</code>\n"
-                f"└─ SL avg: <code>${d.sl_avg:.6g}</code>"
-            )
-
-        ob_line = ""
-        if sig.ob_block:
-            ob_line = (
-                f"\n🧱 OB {sig.ob_block.side.upper()} @ "
-                f"${sig.ob_block.price:.6g} (${sig.ob_block.usdt_val/1000:.0f}k)"
-            )
-
-        msg = (
-            f"{emoji} <b>{dir_label} {sig.symbol} {sig.tf.upper()}</b> {emoji}\n"
-            f"<i>Datos: Binance | Ejecutar: Bitunix (limit)</i>\n\n"
-            f"{lv_icon} <b>NIVEL {ltype}</b>: <code>${sig.level.price:.6g}</code>\n"
-            f"   {'█'*int(sig.level.strength*5)}{'░'*(5-int(sig.level.strength*5))} "
-            f"fuerza {sig.level.strength:.1f}{ob_line}\n\n"
-            f"{tend_ico} Tendencial: <b>{tend_dir}</b> | Régimen: <b>{reg_str}</b>\n\n"
-            f"📋 <b>ORDEN LIMIT:</b>\n"
-            f"├─ 📥 Entrada: <code>${sig.entry:.6g}</code>\n"
-            f"├─ 🔴 SL (market): <code>${sig.sl:.6g}</code> (-{sig.sl_pct:.2f}%)\n"
-            f"└─ ⚡ Leverage: <b>{sig.leverage}x</b>\n\n"
-            f"🎯 <b>TAKE PROFITS:</b>\n"
-            f"├─ TP1: <code>${sig.tp1:.6g}</code> (+{sig.tp1_pct:.2f}%) R:R {self.cfg.TP1_RR}x\n"
-            f"├─ TP2: <code>${sig.tp2:.6g}</code> (+{sig.tp2_pct:.2f}%) R:R {self.cfg.TP2_RR}x\n"
-            f"└─ TP3: <code>${sig.tp3:.6g}</code> (+{sig.tp3_pct:.2f}%) R:R {self.cfg.TP3_RR}x\n\n"
-            f"📊 <b>SCORE: {sc.bar()} {sc.total_pct}/10</b>\n"
-            f"   {sc.detail()}\n\n"
-            f"💰 Margen: ~${sig.size_usdt:.1f} | Nocional: ~${notional:.1f} USDT\n"
-            f"📐 R:R: {sig.rr:.2f}x"
-            f"{exec_line}{dca_line}\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🕐 {sig.timestamp.strftime('%Y-%m-%d %H:%M UTC')}\n"
-            f"<i>@birVal_signals_bot</i>"
-        )
-        return self.send(msg)
-
-    def poll(self) -> List[dict]:
-        try:
-            r = requests.get(
-                f"{self.base}/getUpdates",
-                params={"offset": self._last + 1, "timeout": 3},
-                timeout=8
-            )
-            if r.status_code == 200:
-                updates = r.json().get("result", [])
-                if updates:
-                    self._last = updates[-1]["update_id"]
-                return updates
-        except:
-            pass
-        return []
-
-    def parse_cmd(self, updates: List[dict]) -> List[Tuple[str, List[str]]]:
-        cmds = []
-        for upd in updates:
-            txt = upd.get("message", {}).get("text", "").strip()
-            if txt.startswith("/"):
-                p = txt.split()
-                cmds.append((p[0].lower(), p[1:]))
-        return cmds
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ORQUESTADOR PRINCIPAL
-# ══════════════════════════════════════════════════════════════════════════════
-class LevelSniper:
-    def __init__(self):
-        self.cfg      = Config()
-        self.md       = MarketData(self.cfg)
-        self.detector = LevelDetector(self.cfg)
-        self.tend_eng = TrailingTendencial(self.cfg)
-        self.ob_eng   = OrderBookAnalyzer(self.cfg)
-        self.scorer   = ScoreEngine(self.cfg)
-        self.regime_d = MarketRegimeDetector(self.cfg)
-        self.exec_sim = ExecutionSimulator(self.cfg)
-        self.corr     = CorrelationFilter()
-        self.trade_eng: Optional[TradeEngine] = None
-        self.risk     = RiskManager(self.cfg)
-        self.tg       = Telegram(self.cfg)
-        self.sig_log  = SignalLog(self.cfg.SIGNAL_LOG)
-
-        self._levels:      Dict[str, List[Level]]           = defaultdict(list)
-        self._cooldown:    Dict[str, datetime]              = {}
-        self._cache:       Dict[str, Dict[str, pd.DataFrame]] = {}
-        self._liq_cache:   Dict[str, List[Level]]           = defaultdict(list)
-        self._ob_cache:    Dict[str, dict]                  = {}
-        self._running      = False
-        self._last_refresh: Dict[str, datetime]             = {}
-
-    async def _init(self) -> bool:
-        if not self.cfg.validate():
-            return False
-
-        self.trade_eng = TradeEngine(self.cfg, self.md, self.sig_log,
-                                      self.risk, self.corr, self.tg)
-
-        log.info("Detectando niveles S/R + OB + Liquidaciones iniciales...")
-        for sym in self.cfg.SYMBOLS:
-            await self._refresh_all(sym)
-            await asyncio.sleep(0.5)
-
-        total_levels = sum(len(v) for v in self._levels.values())
-        self.tg.send(
-            "🚀 <b>birVal v7.1 — INSTITUTIONAL GRADE</b>\n\n"
-            f"📌 Pares: {', '.join(s.replace('USDT','') for s in self.cfg.SYMBOLS)}\n"
-            f"🎯 Edge: S/R + CVD + OI + Vela + Tendencial + Liq + OB + GP\n"
-            f"✅ Score mín: {self.cfg.SCORE_MIN_PASS}/10 (calibrado)\n"
-            f"📊 DCA Táctico: 3 entradas por señal\n"
-            f"⚡ Leverage dinámico (riesgo USDT fijo)\n"
-            f"💰 Capital: ${self.cfg.ACCOUNT_BALANCE} | Riesgo: 2% = "
-            f"${self.cfg.ACCOUNT_BALANCE * self.cfg.RISK_PER_TRADE:.2f}/op\n"
-            f"📐 R:R mínimo: {self.cfg.MIN_RR}x\n"
-            f"🗂 Niveles detectados: {total_levels}\n\n"
-            f"Comandos: /niveles /gp /liq BTC /ob TAO /status /performance /help\n"
-            f"<i>@birVal_signals_bot</i>"
-        )
-        return True
-
-    async def _refresh_all(self, symbol: str):
-        all_levels: List[Level] = []
-
-        for tf in self.cfg.TIMEFRAMES:
-            df = await self.md.fetch_klines(symbol, tf, self.cfg.CANDLES)
-            if not df.empty:
-                self._cache.setdefault(symbol, {})[tf] = df
-                sr_levels = self.detector.detect_sr(df, symbol, tf)
-                all_levels.extend(sr_levels)
-                gp_levels = self.detector.detect_golden_pocket(df, symbol, tf)
-                all_levels.extend(gp_levels)
-
-        liq_zones  = await self.md.fetch_liq_levels(symbol)
-        liq_levels = self.detector.detect_liq_levels(liq_zones, symbol)
-        all_levels.extend(liq_levels)
-        self._liq_cache[symbol] = liq_levels
-
-        ob     = await self.md.fetch_order_book(symbol)
-        self._ob_cache[symbol] = ob
-        blocks = self.ob_eng.find_blocks(ob, 0, symbol)
-        ob_levels = self.detector.detect_ob_levels(blocks, symbol)
-        all_levels.extend(ob_levels)
-
-        manual = [lv for lv in self._levels[symbol] if lv.source == "manual"]
-        auto   = [lv for lv in all_levels if not lv.is_expired(self.cfg.LEVEL_EXPIRE_HOURS)]
-        self._levels[symbol] = manual + auto
-
-    async def _analyze(self, symbol: str,
-                       macro_bull: bool = False, macro_bear: bool = False,
-                       btc_risk_off: bool = False, btc_risk_on: bool = False
-                       ) -> Optional[Signal]:
-        last = self._cooldown.get(symbol)
-        if last and (datetime.utcnow() - last).total_seconds() < self.cfg.COOLDOWN_MIN * 60:
-            return None
-
-        df5 = await self.md.fetch_klines(symbol, "5m", 50)
-        if df5.empty or len(df5) < 10:
-            return None
-        self._cache.setdefault(symbol, {})["5m"] = df5
-
-        price    = float(df5.iloc[-1]["close"])
-        _, oi_chg = await self.md.fetch_oi(symbol)
-        tend      = self.tend_eng.compute(df5, symbol)
-        ob        = await self.md.fetch_order_book(symbol)
-        blocks    = self.ob_eng.find_blocks(ob, price, symbol)
-        self._ob_cache[symbol] = ob
-
-        for level in self._levels[symbol]:
-            prox = level.proximity_pct(price)
-            if prox > self.cfg.LEVEL_TOUCH_ZONE:
-                continue
-
-            direction = (
-                Dir.LONG if level.ltype in (LevelType.SUPPORT, LevelType.LIQ_LONG,
-                                            LevelType.OB_BID, LevelType.GOLDEN_BULL)
-                else Dir.SHORT
-            )
-
-            if btc_risk_off and direction == Dir.LONG:    continue
-            if btc_risk_on  and direction == Dir.SHORT:   continue
-            if macro_bear   and direction == Dir.LONG:    continue
-            if macro_bull   and direction == Dir.SHORT:   continue
-
-            ob_block  = self.ob_eng.nearest_block(blocks, price, direction)
-            is_golden = level.ltype in (LevelType.GOLDEN_BULL, LevelType.GOLDEN_BEAR)
-            reg       = self.regime_d.detect(df5)
-            score     = self.scorer.compute(
-                df5, direction, oi_chg, tend,
-                self._liq_cache.get(symbol, []), ob_block, price, reg, is_golden
-            )
-
-            log.info(
-                f"{symbol} @ ${price:.6g} — {level.ltype.value} ${level.price:.6g} "
-                f"prox:{prox*100:.2f}% | Score:{score.total:.1f}/10 "
-                f"[CVD:{score.cvd_score:.1f} OI:{score.oi_score:.1f} "
-                f"Vela:{score.candle_score:.1f} Tend:{score.tend_score:.1f}] "
-                f"Tend:{tend.direction} Reg:{reg.value}"
-            )
-
-            # FIX-11: score.passed() es un método — se llama con ()
-            if not score.passed():
-                continue
-
-            corr_ok, corr_reason = self.corr.can_open(symbol)
-            if not corr_ok:
-                log.debug(f"{symbol}: {corr_reason}"); continue
-
-            balance   = await self.md.fetch_balance()
-            ok, reason = self.risk.can_trade(balance, symbol)
-            if not ok:
-                log.info(f"Risk bloqueado: {reason}")
-                return None
-
-            sig = self._build_signal(
-                symbol, direction, level, price, score, "5m",
-                balance, tend, ob_block, reg, is_golden
-            )
-            if sig:
-                level.last_touch = datetime.utcnow()
-                return sig
-
-        return None
-
-    def _build_signal(self, symbol: str, direction: Dir, level: Level,
-                      price: float, score: ScoreResult, tf: str,
-                      balance: float, tend: Tendencial,
-                      ob_block: Optional[OBBlock], regime: Regime,
-                      is_golden: bool) -> Optional[Signal]:
-        is_long = direction == Dir.LONG
-        sign    = 1 if is_long else -1
-
-        sl = (level.price * (1 - self.cfg.SL_BUFFER_PCT) if is_long
-              else level.price * (1 + self.cfg.SL_BUFFER_PCT))
-        sl_dist = abs(price - sl)
-        if sl_dist < price * 0.001:
-            return None
-
-        tp1 = price + sign * sl_dist * self.cfg.TP1_RR
-        tp2 = price + sign * sl_dist * self.cfg.TP2_RR
-        tp3 = price + sign * sl_dist * self.cfg.TP3_RR
-
-        if is_long  and (sl >= price or tp1 <= price): return None
-        if not is_long and (sl <= price or tp1 >= price): return None
-
-        def pct(t: float) -> float:
-            raw = (t - price) / price * 100
-            return round(raw if is_long else -raw, 2)
-
-        sl_pct = round(abs(price - sl) / price * 100, 2)
-        rr     = round(pct(tp1) / (sl_pct + 1e-9), 2)
-        if rr < self.cfg.MIN_RR:
-            return None
-
-        eff_risk  = self.exec_sim.effective_risk_pct(direction, price, sl)
-        raw_lev   = self.cfg.RISK_PER_TRADE / (eff_risk + 1e-9)
-        leverage  = int(np.clip(round(raw_lev), self.cfg.MIN_LEVERAGE, self.cfg.MAX_LEVERAGE))
-        size_usdt = balance * self.cfg.RISK_PER_TRADE / (eff_risk + 1e-9)
-
-        ex          = self.exec_sim.simulate_entry(direction, price, True)
-        ex.effective_sl = self.exec_sim.simulate_sl(direction, sl)
-
-        dca = DCABuilder(self.cfg).build(direction, price, sl, balance)
-
-        sig = Signal(
-            symbol=symbol, direction=direction, level=level,
-            entry=round(price, 6), sl=round(sl, 6),
-            tp1=round(tp1, 6), tp2=round(tp2, 6), tp3=round(tp3, 6),
-            sl_pct=sl_pct, tp1_pct=pct(tp1), tp2_pct=pct(tp2), tp3_pct=pct(tp3),
-            rr=rr, score=score, leverage=leverage,
-            size_usdt=round(size_usdt, 2), tf=tf,
-            tend=tend, dca=dca, is_golden=is_golden,
-            regime=regime, ob_block=ob_block,
-            exec_sim=ex, execution=ex,  # FIX-06: ambos campos asignados
-        )
-        return sig
-
-    # ── FIX-08: Comandos completamente reescritos — /status separado de /gp ──
-    async def _handle_commands(self, cmds: List[Tuple[str, List[str]]]):
-        for cmd, args in cmds:
-
-            if cmd == "/nivel" and len(args) >= 3:
-                sym = args[0].upper()
-                if not sym.endswith("USDT"): sym += "USDT"
-                try:
-                    price = float(args[1])
-                    ltype = LevelType.SUPPORT if "sop" in args[2].lower() else LevelType.RESISTANCE
-                    self._levels[sym].append(Level(
-                        symbol=sym, price=price, ltype=ltype,
-                        touches=1, strength=0.8, source="manual"
-                    ))
-                    self.tg.send(f"✅ Nivel manual: <b>{sym}</b> {ltype.value.upper()} @ ${price:.6g}")
-                except Exception as e:
-                    self.tg.send(f"❌ Error: {e}\nUso: /nivel TAO 269.50 soporte")
-
-            elif cmd == "/del" and len(args) >= 2:
-                sym = args[0].upper()
-                if not sym.endswith("USDT"): sym += "USDT"
-                try:
-                    price  = float(args[1])
-                    before = len(self._levels[sym])
-                    self._levels[sym] = [lv for lv in self._levels[sym]
-                                         if abs(lv.price - price) / price > 0.001]
-                    removed = before - len(self._levels[sym])
-                    self.tg.send(f"✅ {removed} nivel(es) eliminado(s) de {sym}")
-                except Exception as e:
-                    self.tg.send(f"❌ Error: {e}")
-
-            elif cmd == "/niveles":
-                lines = ["📊 <b>NIVELES ACTIVOS</b>\n"]
-                for sym in self.cfg.SYMBOLS:
-                    lvls = self._levels[sym]
-                    if not lvls: continue
-                    lines.append(f"\n<b>{sym.replace('USDT','')}</b>:")
-                    for lv in sorted(lvls, key=lambda x: x.price)[:8]:
-                        src_icon = {"manual": "✋", "liq": "💧", "ob": "🧱"}.get(lv.source, "🤖")
-                        lines.append(f"  {src_icon} {lv.ltype.value[:4].upper()} "
-                                     f"${lv.price:.6g} | f:{lv.strength:.1f}")
-                self.tg.send("\n".join(lines) or "Sin niveles activos.")
-
-            elif cmd == "/liq" and len(args) >= 1:
-                sym = args[0].upper()
-                if not sym.endswith("USDT"): sym += "USDT"
-                liq_lvls = self._liq_cache.get(sym, [])
-                if not liq_lvls:
-                    self.tg.send(f"Sin zonas de liquidación para {sym}.\nEjecutando refresh...")
-                    await self._refresh_all(sym)
-                    liq_lvls = self._liq_cache.get(sym, [])
-                if liq_lvls:
-                    lines = [f"💧 <b>ZONAS LIQUIDACIÓN {sym}</b>\n"]
-                    for lv in sorted(liq_lvls, key=lambda x: x.price):
-                        lines.append(f"  {lv.ltype.value} @ ${lv.price:.6g} "
-                                     f"| ~${lv.usdt_vol/1e3:.0f}k")
-                    self.tg.send("\n".join(lines))
-                else:
-                    self.tg.send(f"Sin datos de liquidación disponibles para {sym}")
-
-            elif cmd == "/ob" and len(args) >= 1:
-                sym = args[0].upper()
-                if not sym.endswith("USDT"): sym += "USDT"
-                ob     = self._ob_cache.get(sym, {})
-                blocks = self.ob_eng.find_blocks(ob, 0)
-                if not blocks:
-                    self.tg.send(f"Sin bloques OB significativos en {sym}")
-                else:
-                    lines = [f"🧱 <b>BLOQUES OB {sym}</b>\n"]
-                    for b in blocks[:6]:
-                        lines.append(f"  {b.side.upper()} @ ${b.price:.6g} "
-                                     f"| ${b.usdt_val/1000:.0f}k USDT")
-                    self.tg.send("\n".join(lines))
-
-            elif cmd == "/gp":
-                # FIX-08: /gp completamente separado de /status
-                lines = ["🌟 <b>GOLDEN POCKETS ACTIVOS</b>\n"]
-                found = False
-                for sym in self.cfg.SYMBOLS:
-                    gp_lvls = [lv for lv in self._levels[sym]
-                               if lv.ltype in (LevelType.GOLDEN_BULL, LevelType.GOLDEN_BEAR)]
-                    if not gp_lvls: continue
-                    found = True
-                    lines.append(f"\n<b>{sym.replace('USDT','')}</b>:")
-                    for lv in gp_lvls:
-                        tipo   = "🟢 BULL" if lv.ltype == LevelType.GOLDEN_BULL else "🔴 BEAR"
-                        swing  = lv.usdt_vol * 100
-                        zone_l = lv.price * (1 - 0.003)
-                        zone_h = lv.price * (1 + 0.003)
-                        lines.append(
-                            f"  {tipo} @ ${lv.price:.6g}\n"
-                            f"  Zona: ${zone_l:.6g}–${zone_h:.6g}\n"
-                            f"  Swing: {swing:.1f}% | TF: {lv.tf}"
-                        )
-                self.tg.send("\n".join(lines) if found else "Sin Golden Pockets detectados.")
-
-            elif cmd == "/status":
-                # FIX-08: /status es su propio handler — separado de /gp
-                rs  = self.risk.state
-                wr  = f"{rs.winrate*100:.1f}%" if rs.total_trades >= 5 else "Sin historial suficiente"
-                total_lvls = sum(len(v) for v in self._levels.values())
-                open_t     = self.trade_eng.open_count if self.trade_eng else 0
-                self.tg.send(
-                    f"📊 <b>ESTADO — birVal v7.1</b>\n\n"
-                    f"{'⏸ PAUSADO' if rs.paused else '🟢 ACTIVO'}\n"
-                    f"{'⚠️ Motivo: ' + rs.pause_reason + chr(10) if rs.paused else ''}"
-                    f"Trades hoy: {rs.daily_trades}/{self.cfg.MAX_DAILY_TRADES}\n"
-                    f"Trades abiertos: {open_t}\n"
-                    f"PnL hoy: {rs.daily_pnl:+.2f} USDT\n"
-                    f"Win rate: {wr} ({rs.total_trades} ops)\n"
-                    f"Racha pérdidas: {rs.streak_losses}\n"
-                    f"Niveles activos: {total_lvls}\n"
-                    f"Score mín: {self.cfg.SCORE_MIN_PASS}/10\n"
-                    f"<i>@birVal_signals_bot</i>"
-                )
-
-            elif cmd == "/performance":
-                s = self.sig_log.stats()
-                self.tg.send(
-                    f"📈 <b>PERFORMANCE REAL</b>\n\n"
-                    f"Total: {s['total']} | Wins: {s['wins']} | Losses: {s['losses']}\n"
-                    f"Pendientes: {s['total'] - s['wins'] - s['losses']}\n"
-                    f"Win rate: {s['winrate']*100:.1f}%\n"
-                    f"PnL: {s['pnl']:+.2f} USDT\n"
-                    f"<i>@birVal_signals_bot</i>"
-                )
-
-            elif cmd == "/pausa":
-                self.risk.state.paused      = True
-                self.risk.state.pause_reason = "Manual por usuario"
-                self.tg.send("⏸ Bot pausado. Usa /start para reanudar.")
-
-            elif cmd in ("/start", "/resume"):
-                self.risk.resume()
-                self.tg.send("▶️ Bot reanudado. Buscando señales...")
-
-            elif cmd == "/refresh":
-                sym_arg = args[0].upper() if args else None
-                syms    = [sym_arg + "USDT" if sym_arg and not sym_arg.endswith("USDT") else sym_arg] \
-                          if sym_arg else self.cfg.SYMBOLS
-                for sym in syms:
-                    if sym in self.cfg.SYMBOLS:
-                        await self._refresh_all(sym)
-                        await asyncio.sleep(0.3)
-                self.tg.send(f"🔄 Niveles refrescados para {len(syms)} par(es).")
-
-            elif cmd == "/help":
-                self.tg.send(
-                    "📖 <b>COMANDOS birVal v7.1</b>\n\n"
-                    "/nivel TAO 269.50 soporte\n"
-                    "/nivel TAO 285.00 resistencia\n"
-                    "/del TAO 269.50 — eliminar nivel\n"
-                    "/niveles — todos los niveles activos\n"
-                    "/gp — Golden Pockets activos 🌟\n"
-                    "/liq BTC — zonas de liquidación\n"
-                    "/ob TAO — bloques del order book\n"
-                    "/status — estado del bot\n"
-                    "/performance — historial de señales\n"
-                    "/refresh [SYMBOL] — forzar refresh de niveles\n"
-                    "/pausa | /start\n"
-                    "<i>@birVal_signals_bot</i>"
-                )
-
-    async def _cycle(self):
-        now = datetime.utcnow()
-        if (now - self.risk.state.last_reset).total_seconds() > 86400:
-            self.risk.reset_daily()
-
-        updates = await asyncio.get_event_loop().run_in_executor(None, self.tg.poll)
-        cmds    = self.tg.parse_cmd(updates)
-        if cmds:
-            await self._handle_commands(cmds)
-
-        # Track trades abiertos
-        if self.trade_eng:
-            await self.trade_eng.tick()
-
-        # Contexto macro BTC/ETH
-        btc_bull = eth_bull = False
-        btc_momentum = 0.0
-
-        for ref in self.cfg.MARKET_REF:
-            df_ref = await self.md.fetch_klines(ref, "5m", 20)
-            if not df_ref.empty:
-                c        = df_ref["close"].values
-                ema21    = pd.Series(c).ewm(span=21, adjust=False).mean().values
-                bull     = c[-1] > ema21[-1]
-                momentum = (c[-1] - c[-4]) / (c[-4] + 1e-9) if len(c) >= 4 else 0.0
-                if ref == "BTCUSDT":
-                    btc_bull     = bull
-                    btc_momentum = float(momentum)
-                    log.info(f"BTC: momentum {momentum*100:.2f}% | {'BULL' if bull else 'BEAR'}")
-                elif ref == "ETHUSDT":
-                    eth_bull = bull
-
-        btc_risk_off = btc_momentum < self.cfg.BTC_STRONG_BEAR_PCT
-        btc_risk_on  = btc_momentum > self.cfg.BTC_STRONG_BULL_PCT
-        macro_bull   = btc_bull and eth_bull and not btc_risk_off
-        macro_bear   = not btc_bull and not eth_bull and not btc_risk_on
-
-        if btc_risk_off:
-            log.info(f"⚠️ RISK-OFF: BTC {btc_momentum*100:.2f}% — solo SHORTs")
-        elif btc_risk_on:
-            log.info(f"🚀 RISK-ON: BTC {btc_momentum*100:.2f}% — solo LONGs")
-
-        # Refresh niveles cada 5 min
-        for sym in self.cfg.SYMBOLS:
-            last_ref = self._last_refresh.get(sym, datetime.min)
-            if (now - last_ref).total_seconds() > 300:
-                await self._refresh_all(sym)
-                self._last_refresh[sym] = now
-                await asyncio.sleep(0.3)
-
-        # Analizar señales
-        for sym in self.cfg.SYMBOLS:
-            try:
-                sig = await self._analyze(sym, macro_bull, macro_bear,
-                                          btc_risk_off, btc_risk_on)
-                if sig:
-                    ok = self.tg.send_signal(sig)
-                    if ok:
-                        self.sig_log.add(sig)
-                        self._cooldown[sym]   = datetime.utcnow()
-                        self.corr.register_open(sym)
-                        if self.trade_eng:
-                            self.trade_eng.register(sig)
-                        log.info(
-                            f"✅ SEÑAL ENVIADA {sig.direction.value} {sym} | "
-                            f"${sig.entry:.6g} | SL ${sig.sl:.6g} | "
-                            f"Score {sig.score.total:.1f}/10 | "
-                            f"Lev {sig.leverage}x | R:R {sig.rr}x"
-                        )
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                log.error(f"Error analizando {sym}: {e}\n{traceback.format_exc()}")
-
-    async def run(self):
-        if not await self._init():
-            return
-        self._running = True
-        log.info(f"birVal v7.1 corriendo — ciclo cada {self.cfg.LOOP_SEC}s")
-        while self._running:
-            try:
-                await self._cycle()
-            except Exception as e:
-                log.error(f"Error en ciclo principal: {e}\n{traceback.format_exc()}")
-                await asyncio.sleep(5)
-            await asyncio.sleep(self.cfg.LOOP_SEC)
-
-    def stop(self):
-        self._running = False
-        self.md.close()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ENTRY POINT
-# ══════════════════════════════════════════════════════════════════════════════
-async def main():
-    bot = LevelSniper()
-    try:
-        await bot.run()
-    except KeyboardInterrupt:
-        log.info("Bot detenido por usuario.")
-    finally:
-        bot.stop()
-
-if __name__ == "__main__":
-    print("""
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  birVal v7.1 — INSTITUTIONAL GRADE (AUDITADO + CORREGIDO)                  ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  FIXES CRÍTICOS APLICADOS:                                                  ║
-║  ✅ Score threshold bajado 5.5 → 4.0 (señales reales posibles)             ║
-║  ✅ ScoreResult.detail() corregido (AttributeError eliminado)               ║
-║  ✅ DCALevels dataclass completo (e1_pct, e2_pct, e3_pct añadidos)         ║
-║  ✅ Config completo (SLIPPAGE, FEE, TRACK_MAX_HOURS añadidos)              ║
-║  ✅ Signal dataclass completo (is_golden, execution añadidos)               ║
-║  ✅ /status separado de /gp (bug lógico corregido)                         ║
-║  ✅ OB persistence: 3 → 2 ciclos (menos restrictivo)                       ║
-║  ✅ LIQ funding threshold: 0.0003 → 0.00005 (10x más sensible)            ║
-║  ✅ score.passed() llamado correctamente como método                        ║
-║  ✅ COOLDOWN reducido: 20 → 10 min                                         ║
-║  ✅ CVD scoring gradual — captura tendencias débiles                        ║
-║  ✅ OI ventana reducida: 12 → 6 ciclos (60s más reactivo)                  ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  Capital: $40 | Riesgo: 2% = $0.80/op | Lev máx: 10x | Bitunix manual     ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-""")
-    asyncio.run(main())
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>birVal v6.1 — Institutional Quant Terminal</title>
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Barlow+Condensed:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg0:#010a14;--bg1:#041220;--bg2:#071a2e;--bg3:#0b2340;
+  --bdr:#0f3560;--bdrb:#1a5294;
+  --acc:#00c8f0;--grn:#00e676;--red:#ff1744;
+  --yel:#ffd600;--amb:#ff8f00;--pur2:#a78bfa;--tel:#14b8a6;
+  --tp:#d4e8f7;--ts:#6b9ab8;--tm:#2d5a7a;
+  --mono:"JetBrains Mono",monospace;--cond:"Barlow Condensed",sans-serif;
+  --HDR:34px;--BOT:108px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var(--tp);font-family:var(--mono);font-size:11px;}
+body::before{content:"";position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,200,240,.007) 3px,rgba(0,200,240,.007) 4px);pointer-events:none;z-index:9998;}
+.hdr{display:flex;align-items:center;justify-content:space-between;height:var(--HDR);padding:0 14px;background:var(--bg1);border-bottom:1px solid var(--bdr);position:relative;flex-shrink:0;}
+.hdr::after{content:"";position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--acc) 40%,var(--pur2) 70%,transparent);opacity:.5;animation:hl 5s ease-in-out infinite;}
+@keyframes hl{0%,100%{opacity:.25}50%{opacity:.65}}
+@keyframes ksblink{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes pdot{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes sfade{from{opacity:0;transform:translateX(6px)}to{opacity:1;transform:translateX(0)}}
+.logo{font-family:var(--cond);font-size:18px;font-weight:700;letter-spacing:3px;color:var(--acc);text-shadow:0 0 28px rgba(0,200,240,.4);}
+.logo em{color:var(--ts);font-style:normal;font-weight:300;font-size:14px;}
+.hdr-ticks{display:flex;gap:16px;}
+.htk{display:flex;flex-direction:column;cursor:pointer;}
+.htk-s{font-size:8px;color:var(--tm);letter-spacing:1.5px;font-family:var(--cond);}
+.htk-p{font-size:12px;font-weight:600;}
+.htk-p.up{color:var(--grn);} .htk-p.dn{color:var(--red);}
+.hdr-r{display:flex;align-items:center;gap:10px;}
+.ldot{width:7px;height:7px;border-radius:50%;background:var(--grn);box-shadow:0 0 10px var(--grn);animation:pdot 2s infinite;}
+.ltxt{font-size:9px;color:var(--grn);letter-spacing:2px;font-family:var(--cond);}
+.clk{font-size:12px;font-weight:500;color:var(--acc);}
+.ks-btn{padding:3px 10px;border:1px solid var(--grn);background:rgba(0,230,118,.06);color:var(--grn);font-family:var(--cond);font-size:10px;letter-spacing:1px;cursor:pointer;transition:all .2s;border-radius:1px;font-weight:600;}
+.ks-btn.danger{border-color:var(--red)!important;background:rgba(255,23,68,.12)!important;color:var(--red)!important;animation:ksblink .4s infinite;}
+.ks-btn.warn{border-color:var(--yel)!important;color:var(--yel)!important;}
+.vbtn{padding:3px 9px;border:1px solid var(--bdrb);background:transparent;color:var(--ts);font-family:var(--cond);font-size:9px;cursor:pointer;transition:all .2s;border-radius:1px;}
+.vbtn.on{border-color:var(--acc);color:var(--acc);} .vbtn.spk{border-color:var(--grn);color:var(--grn);animation:ksblink .5s infinite;}
+.rpill{display:flex;align-items:center;gap:7px;padding:2px 8px;border-radius:1px;border:1px solid var(--yel);background:rgba(255,214,0,.05);}
+.rpill.tb{border-color:var(--grn);background:rgba(0,230,118,.05);}
+.rpill.td{border-color:var(--red);background:rgba(255,23,68,.05);}
+.rpill.vl{border-color:var(--amb);background:rgba(255,143,0,.06);}
+.rpill.bk{border-color:var(--red);background:rgba(255,23,68,.15);animation:ksblink .5s infinite;}
+.rp-lbl{font-family:var(--cond);font-size:10px;font-weight:700;letter-spacing:1.5px;}
+.rp-sub{font-size:8px;color:var(--ts);}
+.wrap{display:grid;grid-template-columns:148px 1fr 244px;height:calc(100vh - var(--HDR) - var(--BOT));}
+.wl{background:var(--bg1);border-right:1px solid var(--bdr);overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;}
+.wl-h{padding:5px 8px;font-size:8px;letter-spacing:2px;color:var(--acc);border-bottom:1px solid var(--bdr);background:var(--bg2);font-family:var(--cond);font-weight:600;}
+.wi{padding:6px 8px;border-bottom:1px solid rgba(15,53,96,.35);cursor:pointer;transition:all .1s;border-left:2px solid transparent;}
+.wi:hover,.wi.on{background:var(--bg3);border-left-color:var(--acc);}
+.wn{font-size:11px;font-weight:600;font-family:var(--cond);} .wp{font-size:10px;color:var(--ts);margin-top:1px;}
+.wc{font-size:10px;font-weight:600;margin-top:1px;} .wc.pos{color:var(--grn);} .wc.neg{color:var(--red);}
+.ca{display:flex;flex-direction:column;background:var(--bg0);overflow:hidden;}
+.ch{display:flex;align-items:center;justify-content:space-between;padding:5px 12px;background:var(--bg1);border-bottom:1px solid var(--bdr);flex-shrink:0;}
+.cs{font-family:var(--cond);font-size:15px;font-weight:700;color:var(--acc);letter-spacing:1px;}
+.cp{font-size:19px;font-weight:700;} .cc{font-size:11px;margin-top:1px;}
+.tfg{display:flex;gap:3px;}
+.tfb{padding:2px 7px;border:1px solid var(--bdr);background:transparent;color:var(--ts);font-family:var(--mono);font-size:9px;cursor:pointer;transition:all .12s;}
+.tfb:hover,.tfb.on{background:rgba(0,200,240,.1);color:var(--acc);border-color:var(--acc);}
+#tvc{flex:1;min-height:0;}
+.rp{background:var(--bg1);border-left:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden;}
+.sec{border-bottom:1px solid var(--bdr);flex-shrink:0;}
+.sh{padding:4px 9px;font-size:8px;letter-spacing:2px;color:var(--acc);background:var(--bg2);display:flex;align-items:center;gap:5px;font-family:var(--cond);font-weight:600;}
+.bdg{font-size:7px;padding:1px 4px;border:1px solid;border-radius:1px;letter-spacing:.5px;}
+.bdgl{border-color:var(--grn);color:var(--grn);} .bdgi{border-color:var(--pur2);color:var(--pur2);}
+/* Signal box */
+.sb{margin:6px 9px;padding:8px 10px;border:1px solid;border-radius:2px;position:relative;overflow:hidden;}
+.sb::before{content:"";position:absolute;inset:0;opacity:.04;}
+.sb.long{border-color:var(--grn)}.sb.long::before{background:var(--grn)}
+.sb.short{border-color:var(--red)}.sb.short::before{background:var(--red)}
+.sb.wait{border-color:var(--tm)}.sb.wait::before{background:transparent}
+.sb.blocked{border-color:var(--red);background:rgba(255,23,68,.08);animation:ksblink .4s infinite;}
+.sd{font-family:var(--cond);font-size:17px;font-weight:700;letter-spacing:3px;display:flex;align-items:center;justify-content:space-between;}
+.sd.long{color:var(--grn)} .sd.short{color:var(--red)} .sd.wait{color:var(--tm)}
+.ss{font-family:var(--cond);font-size:22px;font-weight:700;}
+.ss.long{color:var(--grn)} .ss.short{color:var(--red)} .ss.wait{color:var(--tm)}
+.sm{font-size:9px;color:var(--ts);margin-top:4px;line-height:1.5;}
+.slv{margin-top:6px;display:grid;grid-template-columns:repeat(3,1fr);gap:3px;}
+.slvitem{text-align:center;padding:3px 2px;border:1px solid rgba(15,53,96,.5);border-radius:1px;}
+.slvlbl{font-size:8px;color:var(--tm);letter-spacing:.8px;font-family:var(--cond);}
+.slvval{font-size:10px;font-weight:600;margin-top:1px;}
+/* Scoring */
+.scg{padding:5px 9px;display:flex;flex-direction:column;gap:3px;}
+.scr{display:flex;align-items:center;gap:5px;}
+.sclbl{font-size:9px;color:var(--ts);width:66px;font-family:var(--cond);}
+.sctr{flex:1;height:5px;background:var(--bg3);border-radius:2px;overflow:hidden;}
+.scfi{height:100%;border-radius:2px;transition:width .6s cubic-bezier(.4,0,.2,1);}
+.scnm{font-size:10px;font-weight:600;width:30px;text-align:right;}
+/* CVD Panel enhanced */
+.cvdp{padding:5px 9px;display:flex;flex-direction:column;gap:3px;}
+.cvdr{display:flex;align-items:center;justify-content:space-between;}
+.cvdlbl{font-size:9px;color:var(--ts);width:72px;font-family:var(--cond);}
+.cvdval{font-size:10px;font-weight:600;}
+.cvdsb{padding:3px 5px;border:1px solid;border-radius:1px;text-align:center;margin-top:3px;}
+.cvdsb.bull{border-color:var(--grn);background:rgba(0,230,118,.05);}
+.cvdsb.bear{border-color:var(--red);background:rgba(255,23,68,.05);}
+.cvdsb.neut{border-color:var(--tm);}
+.cvdsl{font-family:var(--cond);font-size:11px;font-weight:700;letter-spacing:2px;}
+.cvdss{font-size:8px;color:var(--ts);margin-top:1px;}
+.cvd-score-ring{display:flex;align-items:center;justify-content:space-between;padding:3px 5px;border:1px solid var(--bdrb);border-radius:1px;margin-bottom:2px;}
+.cvd-score-num{font-family:var(--cond);font-size:17px;font-weight:700;}
+.cvd-score-lbl{font-size:8px;color:var(--ts);text-align:right;line-height:1.4;}
+.cvd-mom-bar{height:5px;background:var(--bg3);border-radius:2px;overflow:hidden;position:relative;margin:2px 0;}
+.cvd-mom-fill{height:100%;border-radius:2px;transition:width .4s,margin-left .4s;}
+.cvd-mom-mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--bdrb);opacity:.5;}
+.cvd-accel-row{display:flex;align-items:center;gap:5px;font-size:8px;margin-bottom:2px;}
+.cvd-accel-lbl{color:var(--tm);font-family:var(--cond);}
+.cvd-accel-arrow{font-size:13px;font-weight:700;}
+/* Confluences */
+.csum{margin:4px 9px;padding:4px 6px;border:1px solid var(--bdrb);border-radius:1px;display:flex;align-items:center;justify-content:space-between;}
+.cst{font-family:var(--cond);font-size:13px;font-weight:700;}
+.csb{flex:1;height:4px;background:var(--bg3);margin:0 8px;border-radius:2px;overflow:hidden;}
+.csbf{height:100%;transition:width .6s ease;border-radius:2px;}
+.csl{font-size:9px;color:var(--ts);}
+.clist{padding:4px 9px;display:flex;flex-direction:column;gap:2px;}
+.ci{display:flex;align-items:center;gap:5px;padding:3px 5px;border-radius:1px;border:1px solid transparent;transition:all .2s;}
+.ci.pass{border-color:rgba(0,230,118,.25);background:rgba(0,230,118,.03);}
+.ci.fail{border-color:rgba(15,53,96,.3);}
+.ci.warn{border-color:rgba(255,214,0,.2);background:rgba(255,214,0,.03);}
+.cidot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.cidot.pass{background:var(--grn);box-shadow:0 0 5px var(--grn);}
+.cidot.fail{background:var(--tm);} .cidot.warn{background:var(--yel);}
+.ciname{font-size:9px;color:var(--ts);flex:1;font-family:var(--cond);}
+.cival{font-size:9px;font-weight:600;}
+.cival.pass{color:var(--grn)} .cival.fail{color:var(--tm)} .cival.warn{color:var(--yel)}
+.ciw{font-size:7px;color:var(--tm);padding:1px 2px;border:1px solid var(--tm);border-radius:1px;font-family:var(--cond);flex-shrink:0;}
+/* Metrics */
+.mb{padding:5px 9px;display:flex;flex-direction:column;gap:3px;}
+.mr{display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;}
+.mc{padding:3px 4px;border:1px solid rgba(15,53,96,.45);border-radius:1px;display:flex;flex-direction:column;gap:1px;}
+.mlb{font-size:7px;color:var(--tm);letter-spacing:1px;font-family:var(--cond);}
+.mv{font-size:11px;font-weight:600;} .msub{font-size:8px;color:var(--tm);}
+/* MTF */
+.mtft{padding:4px 9px;}
+.mtfr{display:grid;grid-template-columns:30px 50px 26px 26px 30px;gap:3px;padding:2px 0;border-bottom:1px solid rgba(15,53,96,.2);align-items:center;}
+.mtfr:last-child{border-bottom:none;} .mtfr.hl{background:rgba(0,200,240,.04);border-radius:1px;}
+.mtftf{font-size:9px;color:var(--tm);font-family:var(--cond);font-weight:600;}
+.mtfbi{font-size:10px;font-weight:700;font-family:var(--cond);}
+.mtfbi.bull{color:var(--grn)} .mtfbi.bear{color:var(--red)} .mtfbi.neut{color:var(--tm)}
+.mtfri,.mtfad{font-size:9px;color:var(--ts);}
+.mtfst{font-size:8px;} .mtfst.hi{color:var(--grn)} .mtfst.lo{color:var(--red)} .mtfst.md{color:var(--yel)}
+/* Feed */
+.feed{overflow-y:auto;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;}
+.fi{padding:5px 9px;border-bottom:1px solid rgba(15,53,96,.2);animation:sfade .3s ease;}
+.fd{font-size:10px;font-weight:700;font-family:var(--cond);}
+.fd.long{color:var(--grn)} .fd.short{color:var(--red)}
+.fdt{font-size:9px;color:var(--ts);margin-top:1px;}
+/* Bottom */
+.bot{height:var(--BOT);border-top:1px solid var(--bdr);display:grid;grid-template-columns:1fr 1fr 188px 220px 240px;flex-shrink:0;}
+.bp{border-right:1px solid var(--bdr);padding:5px 7px;display:flex;flex-direction:column;overflow:hidden;}
+.bp:last-child{border-right:none;}
+.bt{font-size:8px;letter-spacing:2px;color:var(--acc);border-bottom:1px solid var(--bdr);padding-bottom:3px;margin-bottom:4px;font-family:var(--cond);font-weight:600;}
+.miniw{height:66px;position:relative;}
+/* Kill Switch enhanced */
+.ksp{display:flex;flex-direction:column;gap:3px;}
+.ksm{text-align:center;padding:4px;border:2px solid;border-radius:2px;cursor:pointer;transition:all .2s;}
+.ksm.ok{border-color:var(--grn);background:rgba(0,230,118,.06);}
+.ksm.danger{border-color:var(--red);background:rgba(255,23,68,.12);animation:ksblink .4s infinite;}
+.ksm.paused{border-color:var(--yel);background:rgba(255,214,0,.06);}
+.kstitle{font-family:var(--cond);font-size:9px;letter-spacing:2px;color:var(--ts);}
+.ksst{font-family:var(--cond);font-size:14px;font-weight:700;letter-spacing:2px;margin-top:1px;}
+.ksrsn{font-size:8px;color:var(--ts);margin-top:1px;}
+.ks-detail{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-top:2px;}
+.ks-cond-cell{display:flex;flex-direction:column;padding:2px 3px;border:1px solid rgba(15,53,96,.4);border-radius:1px;}
+.ks-cond-lbl{font-size:7px;color:var(--tm);letter-spacing:.8px;font-family:var(--cond);}
+.ks-cond-val{font-size:10px;font-weight:700;margin-top:1px;}
+.ks-cond-cell.ok .ks-cond-val{color:var(--grn);}
+.ks-cond-cell.warn .ks-cond-val{color:var(--yel);}
+.ks-cond-cell.bad .ks-cond-val{color:var(--red);}
+.ks-reg-row{display:flex;align-items:center;gap:4px;padding:2px 4px;margin-top:2px;border:1px solid;border-radius:1px;}
+.ks-reg-row.allow{border-color:rgba(0,230,118,.3);background:rgba(0,230,118,.04);}
+.ks-reg-row.block{border-color:rgba(255,23,68,.3);background:rgba(255,23,68,.04);}
+.ks-reg-row.caution{border-color:rgba(255,214,0,.3);background:rgba(255,214,0,.04);}
+.krr-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+.krr-dot.ok{background:var(--grn);} .krr-dot.bad{background:var(--red);} .krr-dot.warn{background:var(--yel);}
+.krr-txt{font-size:8px;color:var(--ts);flex:1;font-family:var(--cond);}
+.krr-dir{font-size:8px;font-weight:700;font-family:var(--cond);}
+/* Sentiment */
+.sentrows{display:flex;flex-direction:column;gap:3px;}
+.sr{display:flex;align-items:center;gap:5px;}
+.srl{font-size:8px;color:var(--ts);width:54px;font-family:var(--cond);}
+.srtr{flex:1;height:6px;background:var(--bg3);border-radius:1px;overflow:hidden;position:relative;}
+.srfi{height:100%;border-radius:1px;transition:width .5s ease;}
+.srmid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--bdrb);opacity:.6;}
+.srv{font-size:8px;font-weight:600;width:28px;text-align:right;}
+.sv{margin-top:4px;padding:3px 4px;border:1px solid;border-radius:1px;text-align:center;}
+.svl{font-family:var(--cond);font-size:10px;font-weight:700;letter-spacing:2px;}
+.svs{font-size:8px;color:var(--ts);margin-top:1px;}
+/* Funding/Heatmap */
+.fund-r{display:flex;justify-content:space-between;padding:1px 0;}
+.fund-s{font-size:9px;color:var(--ts);font-family:var(--cond);}
+.fund-v{font-size:9px;font-weight:600;}
+.fund-v.pos{color:var(--red)} .fund-v.neg{color:var(--grn)}
+.hmg{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin-top:2px;}
+.hmc{padding:2px;text-align:center;font-size:8px;font-weight:700;font-family:var(--cond);cursor:pointer;border-radius:1px;line-height:1.3;}
+::-webkit-scrollbar{width:3px;height:3px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:2px;}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div class="logo">birVal <em>v6.1</em></div>
+    <div class="hdr-ticks" id="hdrT"></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span id="rpill" class="rpill"><span class="rp-lbl" id="rpLbl">RANGING</span><span class="rp-sub" id="rpSub">ADX &#8212;</span></span>
+  </div>
+  <div class="hdr-r">
+    <button class="ks-btn" id="kshBtn" onclick="manualKS()">&#10003; SISTEMA OK</button>
+    <button class="vbtn" id="vbtn" onclick="toggleVoice()">&#128266; VOZ</button>
+    <div class="ldot"></div><div class="ltxt">LIVE</div>
+    <div class="clk" id="clk">--:--:--</div>
+  </div>
+</div>
+<div class="wrap">
+  <div class="wl">
+    <div class="wl-h">&#9654; WATCHLIST</div>
+    <div id="wlItems"></div>
+  </div>
+  <div class="ca">
+    <div class="ch">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div><div class="cs" id="chSym">OPUSDT</div></div>
+        <div><div class="cp" id="chPr">&#8212;</div><div class="cc" id="chCh">&#8212;</div></div>
+      </div>
+      <div class="tfg">
+        <button class="tfb" onclick="chgTF('1',this)">1m</button>
+        <button class="tfb" onclick="chgTF('3',this)">3m</button>
+        <button class="tfb on" onclick="chgTF('5',this)">5m</button>
+        <button class="tfb" onclick="chgTF('15',this)">15m</button>
+        <button class="tfb" onclick="chgTF('30',this)">30m</button>
+        <button class="tfb" onclick="chgTF('60',this)">1H</button>
+        <button class="tfb" onclick="chgTF('240',this)">4H</button>
+      </div>
+    </div>
+    <div id="tvc"></div>
+  </div>
+  <div class="rp">
+    <div class="sec">
+      <div class="sh">&#9654; SE&#209;AL ACTIVA <span class="bdg bdgl">LIVE</span></div>
+      <div id="sigBox" class="sb wait">
+        <div class="sd wait" id="sigDir"><span>&#8212; ESPERA &#8212;</span><span class="ss wait" id="sigSc">&#8212;</span></div>
+        <div class="sm" id="sigMeta">Calculando indicadores...</div>
+        <div class="slv" id="sigLvl" style="display:none;">
+          <div class="slvitem"><div class="slvlbl">ENTRY</div><div class="slvval" id="slE" style="color:var(--acc)">&#8212;</div></div>
+          <div class="slvitem"><div class="slvlbl">STOP</div><div class="slvval" id="slS" style="color:var(--red)">&#8212;</div></div>
+          <div class="slvitem"><div class="slvlbl">TARGET</div><div class="slvval" id="slT" style="color:var(--grn)">&#8212;</div></div>
+        </div>
+      </div>
+      <div style="padding:0 9px 5px;display:flex;justify-content:space-between;">
+        <span style="font-size:9px;color:var(--ts);">Ichi: <span id="ichiSt" style="font-weight:600">&#8212;</span></span>
+        <span style="font-size:9px;color:var(--ts);">ADX: <span id="adxSt" style="font-weight:600">&#8212;</span></span>
+        <span style="font-size:9px;color:var(--ts);">R:R: <span id="rrSt" style="font-weight:600;color:var(--acc)">&#8212;</span></span>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sh">&#9654; SCORE HF-GRADE <span class="bdg bdgi">INST</span></div>
+      <div class="scg">
+        <div class="scr"><div class="sclbl">CVD FLOW</div><div class="sctr"><div class="scfi" id="sCVD" style="background:var(--acc);width:0%"></div></div><div class="scnm" id="nCVD" style="color:var(--acc)">&#8212;</div></div>
+        <div class="scr"><div class="sclbl">LONG SC</div><div class="sctr"><div class="scfi" id="sLNG" style="background:var(--grn);width:0%"></div></div><div class="scnm" id="nLNG" style="color:var(--grn)">&#8212;</div></div>
+        <div class="scr"><div class="sclbl">SHORT SC</div><div class="sctr"><div class="scfi" id="sSHT" style="background:var(--red);width:0%"></div></div><div class="scnm" id="nSHT" style="color:var(--red)">&#8212;</div></div>
+        <div class="scr"><div class="sclbl">INST FLOW</div><div class="sctr"><div class="scfi" id="sFLW" style="background:var(--pur2);width:0%"></div></div><div class="scnm" id="nFLW" style="color:var(--pur2)">&#8212;</div></div>
+        <div class="scr"><div class="sclbl">ML PROB</div><div class="sctr"><div class="scfi" id="sML" style="background:var(--tel);width:0%"></div></div><div class="scnm" id="nML" style="color:var(--tel)">&#8212;</div></div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sh">&#9654; CVD HEDGE FUND <span class="bdg bdgi">MULTI-TF</span></div>
+      <div class="cvdp">
+        <div id="cvdScRing" class="cvd-score-ring"><div class="cvd-score-num" id="cvdScNum" style="color:var(--ts)">&#8212;</div><div class="cvd-score-lbl">CVD Score<br><span id="cvdPI" style="color:var(--ts)">PI:&#8212;</span></div></div>
+        <div id="cvdMomBar" class="cvd-mom-bar"><div id="cvdMomFill" class="cvd-mom-fill"></div><div class="cvd-mom-mid"></div></div>
+        <div id="cvdAccelRow" class="cvd-accel-row"><span class="cvd-accel-lbl">Accel:</span><span id="cvdArrow" class="cvd-accel-arrow" style="color:var(--ts)">&#8594;</span><span id="cvdAccelVal" style="font-size:9px;color:var(--ts)">&#8212;</span><span id="cvdTkD" style="font-size:8px;color:var(--tm);margin-left:5px">Taker&#916;:&#8212;</span></div>
+        <div class="cvdr"><span class="cvdlbl">Slope 5m</span><span class="cvdval" id="cvd5">&#8212;</span></div>
+        <div class="cvdr"><span class="cvdlbl">Slope 15m</span><span class="cvdval" id="cvd15">&#8212;</span></div>
+        <div class="cvdr"><span class="cvdlbl">Slope 1H</span><span class="cvdval" id="cvd1h">&#8212;</span></div>
+        <div class="cvdr"><span class="cvdlbl">Divergencia</span><span class="cvdval" id="cvdDiv">&#8212;</span></div>
+        <div class="cvdr"><span class="cvdlbl">Taker ratio</span><span class="cvdval" id="cvdTk">&#8212;</span></div>
+        <div class="cvdr"><span class="cvdlbl">OBV align</span><span class="cvdval" id="cvdOBV">&#8212;</span></div>
+        <div class="cvdsb neut" id="cvdSB"><div class="cvdsl" id="cvdSL">NEUTRAL</div><div class="cvdss" id="cvdSS">Esperando datos...</div></div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sh">&#9654; CONFLUENCIAS v6 <span class="bdg bdgi">7 FACTORES</span></div>
+      <div class="csum"><span class="cst" id="cstot" style="color:var(--tm)">0/7</span><div class="csb"><div class="csbf" id="csbf" style="width:0%;background:var(--tm)"></div></div><span class="csl" id="cslbl">Sin senal</span></div>
+      <div class="clist" id="clist"></div>
+    </div>
+    <div class="sec">
+      <div class="sh">&#9654; METRICAS INSTITUCIONALES</div>
+      <div class="mb">
+        <div class="mr">
+          <div class="mc"><div class="mlb">ADX</div><div class="mv" id="mADX">&#8212;</div><div class="msub" id="mADXs">trend</div></div>
+          <div class="mc"><div class="mlb">RSI 14</div><div class="mv" id="mRSI">&#8212;</div><div class="msub" id="mRSIs">mom</div></div>
+          <div class="mc"><div class="mlb">ATR %</div><div class="mv" id="mATR">&#8212;</div><div class="msub">volatility</div></div>
+        </div>
+        <div class="mr">
+          <div class="mc"><div class="mlb">MACD H</div><div class="mv" id="mMACDh">&#8212;</div><div class="msub" id="mMACDs">hist</div></div>
+          <div class="mc"><div class="mlb">BB %B</div><div class="mv" id="mBB">&#8212;</div><div class="msub" id="mBBs">band pos</div></div>
+          <div class="mc"><div class="mlb">R:R</div><div class="mv" id="mRR" style="color:var(--acc)">&#8212;</div><div class="msub">reward</div></div>
+        </div>
+        <div class="mr">
+          <div class="mc"><div class="mlb">VOL REG</div><div class="mv" id="mVOL">&#8212;</div><div class="msub">rel vol</div></div>
+          <div class="mc"><div class="mlb">ICHI</div><div class="mv" id="mICHI">&#8212;</div><div class="msub">cloud</div></div>
+          <div class="mc"><div class="mlb">REGIME</div><div class="mv" id="mREG">&#8212;</div><div class="msub" id="mREGs">phase</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sh">&#9654; MULTI-TIMEFRAME <span class="bdg bdgl">REAL</span></div>
+      <div class="mtft" id="mtft"></div>
+    </div>
+    <div class="sh" style="flex-shrink:0;">&#9654; SE&#209;ALES HOY</div>
+    <div class="feed" id="feed"></div>
+  </div>
+</div>
+<div class="bot">
+  <div class="bp"><div class="bt">CVD ORDERFLOW</div><div class="miniw"><canvas id="cvdChart"></canvas></div></div>
+  <div class="bp"><div class="bt">VOLUMEN RELATIVO</div><div class="miniw"><canvas id="volChart"></canvas></div></div>
+  <div class="bp">
+    <div class="bt">KILL SWITCH + REGIMEN</div>
+    <div class="ksp">
+      <div class="ksm ok" id="ksMain" onclick="manualKS()">
+        <div class="kstitle">SISTEMA</div>
+        <div class="ksst" id="ksSt">&#10003; ACTIVO</div>
+        <div class="ksrsn" id="ksRsn">Click para pausar</div>
+      </div>
+      <div id="ksConds"></div>
+    </div>
+  </div>
+  <div class="bp">
+    <div class="bt">MARKET SENTIMENT</div>
+    <div class="sentrows" id="sentRows"></div>
+    <div class="sv" id="sentV" style="border-color:var(--tm);margin-top:4px;"><div class="svl" id="svLbl" style="color:var(--tm)">NEUTRAL</div><div class="svs" id="svSub">Calculando...</div></div>
+  </div>
+  <div class="bp">
+    <div class="bt">FUNDING + HEATMAP</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;flex:1;overflow:hidden;">
+      <div id="fundCont" style="display:flex;flex-direction:column;gap:1px;"></div>
+      <div id="hmGrid" class="hmg" style="align-content:start;"></div>
+    </div>
+  </div>
+</div>
+<script>
+const SYMS=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','TAOUSDT','TRUMPUSDT','AVAXUSDT','ARBUSDT','OPUSDT','LINKUSDT','HBARUSDT','XRPUSDT'];
+const FUTS=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','OPUSDT','LINKUSDT','HBARUSDT','TAOUSDT','XRPUSDT','TRUMPUSDT','AVAXUSDT','ARBUSDT'];
+const FAPI='https://fapi.binance.com',BAPI='https://api.binance.com';
+let curSym='OPUSDT',curTF='5',tvW=null,priceC={},chgC={},manPause=false,voiceOn=false,lastSpk='',fdCache={};
+const synth=window.speechSynthesis;
+// Kill switch config
+const KS={maxStreak:3,minADX:12,maxVolReg:2.0,minScore:6.0,minConf:3};
+let ksState={streak:0,triggered:false};
+// Dynamic regime filter (updated by detectReg)
+const REGF={TRENDING_UP:{aL:true,aS:false,sb:.5},TRENDING_DOWN:{aL:false,aS:true,sb:.5},RANGING:{aL:true,aS:true,sb:0},VOLATILE:{aL:false,aS:false,sb:-1.5},UNKNOWN:{aL:true,aS:true,sb:-.3}};
+
+function tick(){document.getElementById('clk').textContent=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Bogota'})+' COT';}
+setInterval(tick,1000);tick();
+
+function toggleVoice(){
+  voiceOn=!voiceOn;
+  const b=document.getElementById('vbtn');
+  b.textContent=voiceOn?'\u{1F50A} VOZ ON':'\u{1F50A} VOZ';
+  b.className='vbtn'+(voiceOn?' on':'');
+  if(voiceOn)speak('Sistema de voz activado.');
+}
+function speak(txt){
+  if(!voiceOn||!synth||txt===lastSpk)return;
+  synth.cancel();
+  const u=new SpeechSynthesisUtterance(txt);u.lang='es-ES';u.rate=1.0;u.pitch=1.0;
+  const vs=synth.getVoices(),es=vs.find(v=>v.lang.startsWith('es'));if(es)u.voice=es;
+  lastSpk=txt;const b=document.getElementById('vbtn');b.className='vbtn spk';
+  u.onend=()=>{b.className='vbtn on';};synth.speak(u);
+}
+
+function initTV(sym,tf){
+  document.getElementById('tvc').innerHTML='';
+  tvW=new TradingView.widget({symbol:'BINANCE:'+sym,interval:tf,container_id:'tvc',theme:'dark',style:'1',autosize:true,toolbar_bg:'#041220',hide_side_toolbar:false,
+    studies:['RSI@tv-basicstudies','MACD@tv-basicstudies','Volume@tv-basicstudies'],
+    overrides:{'paneProperties.background':'#010a14','paneProperties.backgroundType':'solid','scalesProperties.textColor':'#6b9ab8',
+      'mainSeriesProperties.candleStyle.upColor':'#00e676','mainSeriesProperties.candleStyle.downColor':'#ff1744',
+      'mainSeriesProperties.candleStyle.borderUpColor':'#00e676','mainSeriesProperties.candleStyle.borderDownColor':'#ff1744'}
+  });
+}
+initTV(curSym,curTF);
+function chgSym(sym){curSym=sym;document.getElementById('chSym').textContent=sym;document.querySelectorAll('.wi').forEach(i=>i.classList.remove('on'));document.querySelector('[data-s="'+sym+'"]')?.classList.add('on');initTV(sym,curTF);updChHdr(sym);runAnalysis(sym);}
+function chgTF(tf,btn){curTF=tf;document.querySelectorAll('.tfb').forEach(b=>b.classList.remove('on'));btn.classList.add('on');initTV(curSym,tf);}
+function updChHdr(sym){
+  if(!priceC[sym])return;
+  const p=parseFloat(priceC[sym]);
+  document.getElementById('chPr').textContent='$'+p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:5});
+  const c=parseFloat(chgC[sym]||0),el=document.getElementById('chCh');
+  el.textContent=(c>=0?'+':'')+c.toFixed(2)+'%';el.style.color=c>=0?'var(--grn)':'var(--red)';
+}
+function buildWL(){
+  const c=document.getElementById('wlItems');c.innerHTML='';
+  SYMS.forEach(s=>{const d=document.createElement('div');d.className='wi'+(s===curSym?' on':'');d.setAttribute('data-s',s);d.innerHTML='<div class="wn">'+s.replace('USDT','')+'</div><div class="wp" id="wp-'+s+'">&#8212;</div><div class="wc" id="wc-'+s+'">&#8212;</div>';d.onclick=()=>chgSym(s);c.appendChild(d);});
+}
+buildWL();
+async function updPrices(){
+  try{
+    const r=await fetch(BAPI+'/api/v3/ticker/24hr?symbols=['+SYMS.map(s=>'"'+s+'"').join(',')+']');
+    const data=await r.json();const hdr=[];
+    data.forEach(it=>{
+      const p=parseFloat(it.lastPrice),c=parseFloat(it.priceChangePercent);
+      priceC[it.symbol]=it.lastPrice;chgC[it.symbol]=it.priceChangePercent;
+      const pe=document.getElementById('wp-'+it.symbol),ce=document.getElementById('wc-'+it.symbol);
+      if(pe)pe.textContent='$'+p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:5});
+      if(ce){ce.textContent=(c>=0?'+':'')+c.toFixed(2)+'%';ce.className='wc '+(c>=0?'pos':'neg');}
+      if(['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT'].includes(it.symbol))hdr.push({s:it.symbol.replace('USDT',''),p,c});
+    });
+    document.getElementById('hdrT').innerHTML=hdr.map(h=>'<div class="htk" onclick="chgSym(''+h.s+'USDT')"><div class="htk-s">'+h.s+'</div><div class="htk-p '+(h.c>=0?'up':'dn')+'">$'+h.p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'</div></div>').join('');
+    updChHdr(curSym);updHeatmap(data);
+  }catch(e){console.warn(e);}
+}
+async function kl(sym,iv,lim=200){
+  try{const ep=FUTS.includes(sym)?FAPI+'/fapi/v1/klines':BAPI+'/api/v3/klines';const r=await fetch(ep+'?symbol='+sym+'&interval='+iv+'&limit='+lim);const d=await r.json();if(!Array.isArray(d))return[];return d.map(k=>({t:+k[0],o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5],tb:+k[9],tv:+k[10]}));}catch{return[];}
+}
+
+/* ==== INDICATORS ==== */
+function ema(a,p){const k=2/(p+1);const r=[a[0]];for(let i=1;i<a.length;i++)r.push(a[i]*k+r[i-1]*(1-k));return r;}
+function rsi(c,p=14){if(c.length<p+1)return 50;const ch=c.slice(1).map((v,i)=>v-c[i]);let g=0,l=0;for(let i=0;i<p;i++){if(ch[i]>0)g+=ch[i];else l+=Math.abs(ch[i]);}let ag=g/p,al=l/p;for(let i=p;i<ch.length;i++){ag=(ag*(p-1)+(ch[i]>0?ch[i]:0))/p;al=(al*(p-1)+(ch[i]<0?Math.abs(ch[i]):0))/p;}return al===0?100:100-(100/(1+ag/al));}
+function atr(cs,p=14){if(cs.length<2)return 0;const trs=cs.slice(1).map((c,i)=>Math.max(c.h-c.l,Math.abs(c.h-cs[i].c),Math.abs(c.l-cs[i].c)));let a=trs.slice(0,p).reduce((s,v)=>s+v,0)/p;for(let i=p;i<trs.length;i++)a=(a*(p-1)+trs[i])/p;return a;}
+function adx(cs,p=14){
+  if(cs.length<p*2+1)return 20;
+  const pm=[],mm=[],tr=[];
+  for(let i=1;i<cs.length;i++){const u=cs[i].h-cs[i-1].h,d=cs[i-1].l-cs[i].l;pm.push(u>d&&u>0?u:0);mm.push(d>u&&d>0?d:0);tr.push(Math.max(cs[i].h-cs[i].l,Math.abs(cs[i].h-cs[i-1].c),Math.abs(cs[i].l-cs[i-1].c)));}
+  const ws=(a,p)=>{let s=a.slice(0,p).reduce((x,y)=>x+y,0);const o=[s];for(let i=p;i<a.length;i++){s=s-s/p+a[i];o.push(s);}return o;};
+  const st=ws(tr,p),sp=ws(pm,p),sm=ws(mm,p);
+  const dp=sp.map((v,i)=>st[i]>0?(v/st[i])*100:0),dm=sm.map((v,i)=>st[i]>0?(v/st[i])*100:0);
+  const dx=dp.map((v,i)=>(dp[i]+dm[i])>0?(Math.abs(dp[i]-dm[i])/(dp[i]+dm[i]))*100:0);
+  const adxs=ws(dx,p),raw=adxs[adxs.length-1];
+  return Math.min(100,Math.max(0,isNaN(raw)?20:raw/p));
+}
+function macd(c){const e12=ema(c,12),e26=ema(c,26),line=e12.map((v,i)=>v-e26[i]),sig=ema(line,9),hist=line.map((v,i)=>v-sig[i]),n=hist.length-1;return{line:line[n],sig:sig[n],hist:hist[n],prev:hist[n-1]};}
+function bb(c,p=20,m=2){if(c.length<p)return{up:0,dn:0,mid:0,pct:.5,w:0};const sl=c.slice(-p),mid=sl.reduce((s,v)=>s+v,0)/p,std=Math.sqrt(sl.reduce((s,v)=>s+(v-mid)**2,0)/p),up=mid+m*std,dn=mid-m*std,last=c[c.length-1];return{up,dn,mid,pct:up>dn?(last-dn)/(up-dn):.5,w:mid?(up-dn)/mid:0};}
+function ichi(cs){if(cs.length<52)return{above:false,below:false,inCloud:true,tk:0,kj:0};const h=cs.map(c=>c.h),l=cs.map(c=>c.l),hmax=(a,n)=>Math.max(...a.slice(-n)),lmin=(a,n)=>Math.min(...a.slice(-n));const tk=(hmax(h,9)+lmin(l,9))/2,kj=(hmax(h,26)+lmin(l,26))/2,saA=(tk+kj)/2,saB=(hmax(h,52)+lmin(l,52))/2,pr=cs[cs.length-1].c;return{above:pr>saA&&pr>saB,below:pr<saA&&pr<saB,inCloud:!(pr>saA&&pr>saB)&&!(pr<saA&&pr<saB),tk,kj,saA,saB};}
+function wyckoff(cs){if(cs.length<20)return{score:0,spring:false,utad:false,sos:false,sow:false,vs:false};const n=20,rc=cs.slice(-n),va=rc.reduce((s,c)=>s+c.v,0)/n,last=cs[cs.length-1],vs=last.v>va*1.8;const pH=Math.max(...cs.slice(-21,-1).map(c=>c.h)),pL=Math.min(...cs.slice(-21,-1).map(c=>c.l));const sma50=cs.slice(-50).reduce((s,c)=>s+c.c,0)/Math.min(50,cs.length);const spring=last.l<pL&&last.c>pL&&vs,utad=last.h>pH&&last.c<pH&&vs;const sos=last.c>last.o&&(last.c-last.o)/last.o>0.015&&vs&&last.c>sma50;const sow=last.c<last.o&&(last.o-last.c)/last.o>0.015&&vs&&last.c<sma50;return{score:(spring?.25:0)+(sos?.2:0)-(utad?.25:0)-(sow?.2:0),spring,utad,sos,sow,vs};}
+function ictF(cs){if(cs.length<10)return{bosB:false,bosS:false,fvgB:false,fvgS:false,obB:false,obS:false};const n=cs.length,p5H=Math.max(...cs.slice(-10,-5).map(c=>c.h)),p5L=Math.min(...cs.slice(-10,-5).map(c=>c.l)),last=cs[n-1];const pct=(cs[n-1].c-cs[n-3].c)/(cs[n-3].c+1e-9);return{bosB:last.c>p5H,bosS:last.c<p5L,fvgB:n>=3&&cs[n-3].h<cs[n-1].l,fvgS:n>=3&&cs[n-3].l>cs[n-1].h,obB:pct>0.01&&(cs[n-4]?.c<cs[n-4]?.o),obS:pct<-0.01&&(cs[n-4]?.c>cs[n-4]?.o)};}
+
+/* ==== CVD HEDGE FUND ENGINE v2 ==== */
+function cvdEngine(cs){
+  if(!cs.length)return{s5:0,s10:0,s20:0,accel:0,tkR:.5,tkR5:.5,tkrAccel:0,div:false,divLeve:false,obvSig:0,obvSlope:0,score:5,signal:'NEUTRAL',sc:'neut',ss:'Sin datos',ca:[],pressureIdx:1,momentum:0};
+  let cvd=0;
+  const ca=cs.map(c=>{const tb=c.tb||c.v*.5;cvd+=(tb-(c.v-tb));return cvd;});
+  const slp=(a,n)=>{if(a.length<n)return 0;const sl=a.slice(-n);return(sl[sl.length-1]-sl[0])/(Math.abs(sl[0])+1e-9);};
+  const s3=slp(ca,3),s5=slp(ca,5),s10=slp(ca,10),s20=slp(ca,20);
+  const accel=s5-s10;
+  const pN=Math.max(0,cs.length-6);
+  const prSlp=(cs[cs.length-1].c-cs[pN].c)/(cs[pN].c+1e-9);
+  const div=Math.sign(s5)!==Math.sign(prSlp)&&Math.abs(s5)>0.04&&Math.abs(prSlp)>0.002;
+  const divLeve=Math.sign(s5)!==Math.sign(prSlp)&&Math.abs(s5)>0.02;
+  const l10=cs.slice(-10),l5=cs.slice(-5);
+  const tb10=l10.reduce((s,c)=>s+(c.tb||c.v*.5),0),tv10=l10.reduce((s,c)=>s+c.v,0);
+  const tb5=l5.reduce((s,c)=>s+(c.tb||c.v*.5),0),tv5=l5.reduce((s,c)=>s+c.v,0);
+  const tkR=tv10>0?tb10/tv10:.5,tkR5=tv5>0?tb5/tv5:.5;
+  const tkrAccel=tkR5-tkR;
+  const volSum=cs.slice(-20).reduce((s,c)=>s+c.v,0);
+  const vwCVD=cs.slice(-20).reduce((s,c)=>{const w=c.v/(volSum+1e-9);const flow=(c.tb||c.v*.5)-(c.v-(c.tb||c.v*.5));return s+flow*w/(c.c+1e-9);},0);
+  const buyP=cs.slice(-20).reduce((s,c)=>s+(c.tb||c.v*.5),0);
+  const sellP=cs.slice(-20).reduce((s,c)=>s+(c.v-(c.tb||c.v*.5)),0);
+  const pressureIdx=buyP/(sellP+1e-9);
+  let obv=0,oa=[];
+  for(let i=1;i<cs.length;i++){if(cs[i].c>cs[i-1].c)obv+=cs[i].v;else if(cs[i].c<cs[i-1].c)obv-=cs[i].v;oa.push(obv);}
+  const oe=ema(oa,20),obvSig=oa[oa.length-1]>oe[oe.length-1]?1:-1;
+  const obvSlope=(oa[oa.length-1]-oa[Math.max(0,oa.length-10)])/(Math.abs(oa[Math.max(0,oa.length-10)])+1e-9);
+  // SCORE HF
+  let score=5.0;
+  score+=Math.max(-2.0,Math.min(2.0,s5*8));
+  const multiConf=(Math.sign(s5)===Math.sign(s10)?.5:0)+(Math.sign(s5)===Math.sign(s20)?.5:0);
+  score+=Math.max(-1.5,Math.min(1.5,(multiConf-.5)*3));
+  score+=Math.max(-1.5,Math.min(1.5,(tkR-.5)*6));
+  score+=Math.max(-.8,Math.min(.8,tkrAccel*8));
+  if(div)score-=1.5; else if(divLeve)score-=.4; else score+=.3;
+  score+=obvSig>0?.4:-.4;
+  score+=Math.max(-.4,Math.min(.4,obvSlope*5));
+  score+=Math.max(-.7,Math.min(.7,vwCVD*500));
+  score+=Math.max(-.4,Math.min(.4,(pressureIdx-1)*.4));
+  score=Math.max(0,Math.min(10,score));
+  let signal,sc,ss;
+  if(score>=7.5&&s5>0.25&&tkR>0.58&&!div){signal='COMPRA FUERTE';sc='bull';ss='Taker '+(tkR*100).toFixed(0)+'% | PI:'+pressureIdx.toFixed(2);}
+  else if(score<=2.5&&s5<-0.25&&tkR<0.42&&!div){signal='VENTA FUERTE';sc='bear';ss='Taker '+(tkR*100).toFixed(0)+'% | PI:'+pressureIdx.toFixed(2);}
+  else if(score>=6.5&&s5>0.1&&!div){signal='COMPRA ACTIVA';sc='bull';ss='Flujo comprador | PI:'+pressureIdx.toFixed(2);}
+  else if(score<=3.5&&s5<-0.1&&!div){signal='VENTA ACTIVA';sc='bear';ss='Flujo vendedor | PI:'+pressureIdx.toFixed(2);}
+  else if(div){signal='DIVERGENCIA';sc='neut';ss='CVD vs precio en conflicto';}
+  else if(score>=5.8&&accel>0.03){signal='ACELERACION BULL';sc='bull';ss='Momentum creciente';}
+  else if(score<=4.2&&accel<-0.03){signal='ACELERACION BEAR';sc='bear';ss='Momentum decreciente';}
+  else{signal='NEUTRAL';sc='neut';ss='Flujo equilibrado | PI:'+pressureIdx.toFixed(2);}
+  return{s5,s3,s10,s20,accel,tkR,tkR5,tkrAccel,div,divLeve,obvSig,obvSlope,score,signal,sc,ss,ca,pressureIdx,momentum:(score-5)/5};
+}
+
+/* ==== REGIME DETECTOR v2 ==== */
+function detectReg(cs,adxV){
+  if(cs.length<30)return{name:'UNKNOWN',cls2:'rpill',key:'RANGING',adxV,r2:0,volR:1,trendStr:0,allowL:true,allowS:true,sb:-.3,desc:'Datos insuficientes',bias:0};
+  const cl=cs.map(c=>c.c);
+  const n20=20,rc=cl.slice(-n20),xm=(n20-1)/2,ym=rc.reduce((s,v)=>s+v,0)/n20;
+  const ssxy=rc.reduce((s,v,i)=>s+(i-xm)*(v-ym),0),ssxx=rc.reduce((s,v,i)=>s+(i-xm)**2,0),ssyy=rc.reduce((s,v,i)=>s+(v-ym)**2,0);
+  const r2=ssxx*ssyy>0?(ssxy**2)/(ssxx*ssyy):0;
+  const lr=cl.slice(1).map((c,i)=>Math.log(c/(cl[i]+1e-9)));
+  const std5v=Math.sqrt(lr.slice(-5).reduce((s,v)=>s+v*v,0)/5+1e-12),std20v=Math.sqrt(lr.slice(-20).reduce((s,v)=>s+v*v,0)/20+1e-12);
+  const volR=std20v>0?std5v/std20v:1;
+  const eArr=ema(cl,20),prUp=cl[cl.length-1]>eArr[eArr.length-1];
+  const highs=cs.map(c=>c.h),lows=cs.map(c=>c.l);
+  const recentH=highs.slice(-10),recentL=lows.slice(-10);
+  const hlCount=recentH.filter((h,i)=>i>0&&h>recentH[i-1]).length;
+  const lhCount=recentL.filter((l,i)=>i>0&&l<recentL[i-1]).length;
+  const atrR=atr(cs.slice(-14),14),atrO=atr(cs.slice(-28,-14),14)||1;
+  const atrRatio=atrR/atrO;
+  let name,cls2,key,allowL,allowS,sb,desc;
+  if(volR>2.0||(adxV>38&&r2<0.25)||atrRatio>2.5){
+    name='VOLATILE';cls2='rpill vl';key='VOLATILE';allowL=false;allowS=false;sb=-1.5;desc='Volatilidad extrema';
+  }else if(adxV>28&&r2>0.65&&hlCount>=5&&prUp){
+    name='TREND BULL FUERTE';cls2='rpill tb';key='TRENDING_UP';allowL=true;allowS=false;sb=0.8;desc='Tendencia alcista fuerte';
+  }else if(adxV>28&&r2>0.65&&lhCount>=5&&!prUp){
+    name='TREND BEAR FUERTE';cls2='rpill td';key='TRENDING_DOWN';allowL=false;allowS=true;sb=0.8;desc='Tendencia bajista fuerte';
+  }else if(adxV>22&&r2>0.50){
+    name=prUp?'TRENDING UP':'TRENDING DOWN';cls2=prUp?'rpill tb':'rpill td';key=prUp?'TRENDING_UP':'TRENDING_DOWN';allowL=prUp;allowS=!prUp;sb=0.4;desc=prUp?'Tendencia alcista activa':'Tendencia bajista activa';
+  }else if(adxV<18&&volR<0.8){
+    name='RANGING TIGHT';cls2='rpill';key='RANGING';allowL=true;allowS=true;sb=-.3;desc='Consolidacion estrecha';
+  }else if(adxV<22){
+    name='RANGING';cls2='rpill';key='RANGING';allowL=true;allowS=true;sb=0;desc='Mercado lateral';
+  }else{
+    name='TRANSITION';cls2='rpill';key='RANGING';allowL=true;allowS=true;sb=-.2;desc='Cambio de regimen';
+  }
+  // Update REGF dynamically
+  REGF[key]={aL:allowL,aS:allowS,sb};
+  return{name,cls2,key,adxV,r2,volR,allowL,allowS,sb,desc,bias:prUp?1:-1,hlCount,lhCount,atrRatio};
+}
+
+/* ==== KILL SWITCH v2 ==== */
+function evalKS(regKey,adxV,volR,score,nConf,regData){
+  const checks=[];let maxSev=0;
+  const add=(ok,warn,lbl,val)=>{const sev=ok?0:warn?1:3;if(sev>maxSev)maxSev=sev;checks.push({lbl,val,sev});};
+  if(manPause){maxSev=3;checks.push({lbl:'MANUAL',val:'PAUSE',sev:3});}
+  add(ksState.streak===0,ksState.streak<KS.maxStreak,'Racha',ksState.streak+'/'+KS.maxStreak);
+  add(volR<1.5,volR<KS.maxVolReg,'Vol',volR.toFixed(1)+'x');
+  add(regKey!=='VOLATILE',true,'Regimen',regKey==='VOLATILE'?'VOLAT':regKey==='TRENDING_UP'?'T.UP':regKey==='TRENDING_DOWN'?'T.DN':regKey==='RANGING'?'RANG':'TRANS');
+  add(adxV>KS.minADX*1.5,adxV>KS.minADX,'ADX',adxV.toFixed(0));
+  if(regKey==='VOLATILE'&&volR>KS.maxVolReg)maxSev=3;
+  if(ksState.streak>=KS.maxStreak)maxSev=3;
+  const trig=maxSev>=3,cautious=!trig&&maxSev===1;
+  updKSUI(trig,cautious,checks,regData);
+  return{trig,cautious,maxSev};
+}
+function updKSUI(trig,cautious,checks,regData){
+  const m=document.getElementById('ksMain'),st=document.getElementById('ksSt'),rs=document.getElementById('ksRsn'),btn=document.getElementById('kshBtn');
+  const sC=s=>s===0?'ok':s===1?'warn':'bad';
+  if(manPause){
+    m.className='ksm paused';st.textContent='\u23F8 PAUSADO';st.style.color='var(--yel)';
+    rs.textContent='Click para reanudar';btn.textContent='\u23F8 PAUSADO';btn.className='ks-btn danger';
+  }else if(trig){
+    m.className='ksm danger';st.textContent='\u26D4 BLOQUEADO';st.style.color='var(--red)';
+    rs.textContent=checks.filter(c=>c.sev>=3).map(c=>c.lbl+'='+c.val).join(' | ')||'Riesgo activo';
+    btn.textContent='\u26D4 BLOQUEADO';btn.className='ks-btn danger';
+    if(voiceOn)speak('Kill switch activado.');
+  }else if(cautious){
+    m.className='ksm paused';st.textContent='\u26A0 CAUTELOSO';st.style.color='var(--yel)';
+    rs.textContent='Condiciones sub-optimas';btn.textContent='\u26A0 CAUTELOSO';btn.className='ks-btn warn';
+  }else{
+    m.className='ksm ok';st.textContent='\u2705 ACTIVO';st.style.color='var(--grn)';
+    rs.textContent='Click para pausar';btn.textContent='\u2705 SISTEMA OK';btn.className='ks-btn';
+  }
+  const rgCls=regData?(regData.allowL||regData.allowS?regData.allowL&&regData.allowS?'allow':'caution':'block'):'allow';
+  const rgDot=regData?(regData.allowL||regData.allowS?regData.allowL&&regData.allowS?'ok':'warn':'bad'):'ok';
+  const rgDir=regData?(regData.allowL&&regData.allowS?'L/S':regData.allowL?'LONG':regData.allowS?'SHORT':'BLOCK'):'--';
+  document.getElementById('ksConds').innerHTML=
+    '<div class="ks-detail">'+checks.slice(0,4).map(c=>'<div class="ks-cond-cell '+sC(c.sev)+'"><div class="ks-cond-lbl">'+c.lbl+'</div><div class="ks-cond-val">'+c.val+'</div></div>').join('')+'</div>'+
+    (regData?'<div class="ks-reg-row '+rgCls+'"><div class="krr-dot '+rgDot+'"></div><div class="krr-txt">'+(regData.desc||'--')+'</div><div class="krr-dir" style="color:'+(rgDir==='L/S'?'var(--acc)':rgDir==='LONG'?'var(--grn)':rgDir==='SHORT'?'var(--red)':'var(--red)')+'">'+rgDir+'</div></div>':'');
+}
+function manualKS(){manPause=!manPause;evalKS('RANGING',20,1,0,0,null);if(manPause)speak('Sistema pausado.');else speak('Sistema reanudado.');}
+
+/* ==== CONFLUENCES v6 ==== */
+function checkConf(dir,ind){
+  const isL=dir==='LONG';
+  const{ema21,ema55,ema200,ichiD,rsiV,cvdD,macdD,adxV,instFlow,wD,iD,tkR,regKey,volR,price}=ind;
+  const cs=[];
+  const emaOk=isL?(ema21>ema55&&ema55>ema200):(ema21<ema55&&ema55<ema200),ichiOk=isL?ichiD.above:ichiD.below;
+  cs.push({name:'Estructura precio',state:emaOk&&ichiOk?'pass':emaOk?'warn':'fail',val:emaOk&&ichiOk?'EMA+Ichi \u2713':emaOk?'EMA \u2713 (nube)':'Sin alineacion',w:'2x',wt:2});
+  const cvdBull=cvdD.s5>0.1&&cvdD.s10>0&&cvdD.tkR>0.52&&!cvdD.div,cvdBear=cvdD.s5<-0.1&&cvdD.s10<0&&cvdD.tkR<0.48&&!cvdD.div;
+  cs.push({name:'CVD multi-slope',state:(isL?cvdBull:cvdBear)?'pass':cvdD.div?'warn':'fail',val:(isL?cvdBull:cvdBear)?'Slope '+cvdD.s5.toFixed(3)+' \u2713':cvdD.div?'Divergencia':'Flujo adverso',w:'3x',wt:3});
+  const rsiOk=isL?rsiV>50&&rsiV<75:rsiV<50&&rsiV>25,macdOk=isL?macdD.hist>0:macdD.hist<0;
+  cs.push({name:'Momentum RSI+MACD',state:rsiOk&&macdOk?'pass':rsiOk||macdOk?'warn':'fail',val:'RSI:'+rsiV.toFixed(0)+' MACD:'+(macdD.hist>0?'\u2191':'\u2193'),w:'2x',wt:2});
+  const instB=instFlow>0.08&&tkR>0.53,instSh=instFlow<-0.08&&tkR<0.47;
+  cs.push({name:'Flujo institucional',state:(isL?instB:instSh)?'pass':'fail',val:'Flow:'+(instFlow*100).toFixed(0)+'% Tk:'+(tkR*100).toFixed(0)+'%',w:'2x',wt:2});
+  const wB=wD.score>0.15||wD.spring||wD.sos,wSh=wD.score<-0.15||wD.utad||wD.sow,iB=iD.bosB||iD.fvgB||iD.obB,iSh=iD.bosS||iD.fvgS||iD.obS;
+  const patOk=isL?(wB&&iB):(wSh&&iSh),patWrn=isL?(wB||iB):(wSh||iSh);
+  cs.push({name:'Wyckoff + ICT',state:patOk?'pass':patWrn?'warn':'fail',val:patOk?(isL?'Spring/BOS':'UTAD/BOS'):patWrn?'Parcial':'Sin patron',w:'1x',wt:1});
+  const rf=REGF[regKey]||REGF['UNKNOWN'],regOk=isL?rf.aL:rf.aS;
+  cs.push({name:'Filtro regimen',state:regOk?'pass':'fail',val:regKey+(regOk?' \u2713':' \u2717'),w:'2x',wt:2});
+  const adxOk=adxV>KS.minADX,volOk=volR<2.5;
+  cs.push({name:'ADX + Volatilidad',state:adxOk&&volOk?'pass':adxOk?'warn':'fail',val:'ADX:'+adxV.toFixed(0)+' Vol:'+volR.toFixed(1)+'x',w:'1x',wt:1});
+  const tw=cs.reduce((s,c)=>s+c.wt,0),pw=cs.filter(c=>c.state==='pass').reduce((s,c)=>s+c.wt,0);
+  return{cs,nPass:cs.filter(c=>c.state==='pass').length,wScore:pw/tw,pw,tw};
+}
+
+/* ==== SCORE ENGINE HF v2 ==== */
+function calcScore(dir,ind,conf,regKey){
+  const isL=dir==='LONG';
+  const{ema21,ema55,ema200,rsiV,macdD,adxV,cvdD,instFlow,price,ichiD,volR}=ind;
+  const tStr=((isL?(price>ema21):(price<ema21))*2+(isL?(ema21>ema55):(ema21<ema55))*1.5+(isL?(ema55>ema200):(ema55<ema200))*1+(isL?(macdD.hist>0):(macdD.hist<0))*1.5+(adxV>25?1:0)*1.5)/7.5;
+  // CVD: use HF score v2
+  const cvdRaw=isL?(cvdD.score-5)/5:(5-cvdD.score)/5;
+  const cvdBonus=isL?(cvdD.signal==='COMPRA FUERTE'?.3:cvdD.signal==='COMPRA ACTIVA'?.15:cvdD.div?-.25:0):(cvdD.signal==='VENTA FUERTE'?.3:cvdD.signal==='VENTA ACTIVA'?.15:cvdD.div?-.25:0);
+  const cvdTotal=Math.max(-1,Math.min(1,cvdRaw+cvdBonus));
+  const rsiNorm=isL?Math.max(0,Math.min(1,(rsiV-35)/50)):Math.max(0,Math.min(1,(65-rsiV)/50));
+  const macdOk=isL?macdD.hist>0:macdD.hist<0,macdStr=Math.abs(macdD.hist)>Math.abs(macdD.prev)?1:.7;
+  const momSc=rsiNorm*(macdOk?macdStr:.5);
+  const instSc=isL?Math.max(0,Math.min(1,instFlow+.5)):Math.max(0,Math.min(1,.5-instFlow));
+  const ichiSc=isL?(ichiD?.above?.6:ichiD?.below?-.3:0):(ichiD?.below?.6:ichiD?.above?-.3:0);
+  const rf=REGF[regKey]||REGF['UNKNOWN'];
+  const volPen=volR>1.8?-.3:volR>1.4?-.1:0;
+  const raw=(tStr*2.5)+(cvdTotal*2.8)+(conf.wScore*1.8)+(momSc*1.2)+(instSc*1.0)+(Math.min(adxV/50,1)*.7)+ichiSc+(rf.sb||0)+volPen;
+  return Math.max(0,Math.min(raw,10));
+}
+
+/* ==== SENTIMENT ==== */
+function calcSent(cvdSlp){
+  const btcC=parseFloat(chgC['BTCUSDT']||0),ethC=parseFloat(chgC['ETHUSDT']||0);
+  const avFund=Object.keys(fdCache).length?Object.values(fdCache).reduce((s,v)=>s+v,0)/Object.keys(fdCache).length:0;
+  const allC=Object.values(chgC).map(v=>parseFloat(v)),br=allC.length?allC.filter(v=>v>0).length/allC.length:.5;
+  const bull=Math.max(0,Math.min(1,(btcC/10+.5)*.35+(ethC/10+.5)*.2+br*.25+(cvdSlp>0?.6:.4)*.15+(.5-avFund*5)*.05));
+  let verdict,vc,vs;
+  if(bull>.70){verdict='ALCISTA FUERTE';vc='var(--grn)';vs='Breadth: '+(br*100).toFixed(0)+'%';}
+  else if(bull>.57){verdict='ALCISTA';vc='var(--grn)';vs='BTC: '+btcC.toFixed(1)+'%';}
+  else if(bull>.43){verdict='NEUTRAL';vc='var(--yel)';vs='Mercado lateral';}
+  else if(bull>.30){verdict='BAJISTA';vc='var(--red)';vs='Presion vendedora';}
+  else{verdict='BAJISTA FUERTE';vc='var(--red)';vs='Risk-off activo';}
+  return{bull,btcC,ethC,br,avFund,verdict,vc,vs};
+}
+
+async function updFunding(){
+  try{const r=await fetch(FAPI+'/fapi/v1/premiumIndex');const d=await r.json();d.forEach(it=>{fdCache[it.symbol]=parseFloat(it.lastFundingRate)*100;});const shown=SYMS.filter(s=>FUTS.includes(s)).slice(0,7);document.getElementById('fundCont').innerHTML=shown.map(s=>{const v=fdCache[s]||0;return'<div class="fund-r"><span class="fund-s">'+s.replace('USDT','')+'</span><span class="fund-v '+(v>0?'pos':'neg')+'">'+(v>0?'+':'')+v.toFixed(3)+'%</span></div>';}).join('');}catch{}
+}
+function updHeatmap(data){const sorted=[...data].sort((a,b)=>Math.abs(b.priceChangePercent)-Math.abs(a.priceChangePercent)).slice(0,12);document.getElementById('hmGrid').innerHTML=sorted.map(it=>{const c=parseFloat(it.priceChangePercent),i=Math.min(Math.abs(c)/8,1),bg=c>=0?'rgba(0,230,118,'+(0.1+i*.5)+')':'rgba(255,23,68,'+(0.1+i*.5)+')',col=c>=0?'var(--grn)':'var(--red)';return'<div class="hmc" style="background:'+bg+';color:'+col+'" onclick="chgSym(''+it.symbol+'')">'+it.symbol.replace('USDT','')+'<br>'+c.toFixed(1)+'%</div>';}).join('');}
+
+const mkC=(id,col)=>new Chart(document.getElementById(id).getContext('2d'),{type:'line',data:{labels:[],datasets:[{data:[],borderColor:col,backgroundColor:col.replace(',1)',',0.06)'),borderWidth:1.5,fill:true,tension:.4,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}}}});
+const cvdCh=mkC('cvdChart','rgba(0,200,240,1)'),volCh=mkC('volChart','rgba(167,139,250,1)');
+function updMiniCVD(cs){let cvd=0;const d=cs.slice(-30).map(c=>{const tb=c.tb||c.v*.5;cvd+=(tb-(c.v-tb));return cvd;});cvdCh.data.labels=d.map((_,i)=>i);cvdCh.data.datasets[0].data=d;const up=d[d.length-1]>d[0];cvdCh.data.datasets[0].borderColor=up?'rgba(0,230,118,1)':'rgba(255,23,68,1)';cvdCh.data.datasets[0].backgroundColor=up?'rgba(0,230,118,.05)':'rgba(255,23,68,.05)';cvdCh.update('none');}
+function updMiniVol(cs){const va=cs.slice(-30).reduce((s,c)=>s+c.v,0)/30,d=cs.slice(-30).map(c=>c.v/va);volCh.data.labels=d.map((_,i)=>i);volCh.data.datasets[0].data=d;volCh.update('none');}
+function updMTF(res){document.getElementById('mtft').innerHTML=res.map(({tf,bias,rsiV,adxV,str})=>'<div class="mtfr'+(tf==='5m'?' hl':'')+'"><div class="mtftf">'+tf+'</div><div class="mtfbi '+(bias==='BULL'?'bull':bias==='BEAR'?'bear':'neut')+'">'+(bias==='BULL'?'\u25B2 BULL':bias==='BEAR'?'\u25BC BEAR':'&#8212; NEUT')+'</div><div class="mtfri" style="color:'+(rsiV>70?'var(--red)':rsiV<30?'var(--grn)':'var(--ts)')+'">'+rsiV.toFixed(0)+'</div><div class="mtfad" style="color:'+(adxV>25?'var(--grn)':adxV>18?'var(--yel)':'var(--tm)')+'">'+adxV.toFixed(0)+'</div><div class="mtfst '+(str==='H'?'hi':str==='L'?'lo':'md')+'">'+str+'</div></div>').join('');}
+
+/* ==== MAIN ANALYSIS ==== */
+async function runAnalysis(sym){
+  document.getElementById('sigMeta').textContent='Descargando datos...';
+  const[c1m,c3m,c5m,c15m,c30m,c1h,c4h]=await Promise.all([kl(sym,'1m',100),kl(sym,'3m',100),kl(sym,'5m',200),kl(sym,'15m',200),kl(sym,'30m',100),kl(sym,'1h',100),kl(sym,'4h',100)]);
+  if(!c5m.length){document.getElementById('sigMeta').textContent='Error obteniendo datos';return;}
+  const cl=c5m.map(c=>c.c);
+  const e21a=ema(cl,21),e55a=ema(cl,55),e200a=ema(cl,200);
+  const ema21=e21a[e21a.length-1],ema55=e55a[e55a.length-1],ema200=e200a[e200a.length-1];
+  const rsiV=rsi(cl,14),atrV=atr(c5m,14),adxV=adx(c5m,14),macdD=macd(cl),bbD=bb(cl),ichiD=ichi(c5m);
+  const cvdD=cvdEngine(c5m),cvdD15=cvdEngine(c15m),cvdD1h=cvdEngine(c1h);
+  const wD=wyckoff(c5m),iD=ictF(c5m);
+  const price=c5m[c5m.length-1].c;
+  const lr=cl.slice(1).map((c,i)=>Math.log(c/(cl[i]+1e-9)));
+  const std5=Math.sqrt(lr.slice(-5).reduce((s,v)=>s+v*v,0)/5+1e-12),std20=Math.sqrt(lr.slice(-20).reduce((s,v)=>s+v*v,0)/20+1e-12);
+  const volR=std20>0?std5/std20:1;
+  const regD=detectReg(c5m,adxV);
+  const l10=c5m.slice(-10),tbS=l10.reduce((s,c)=>s+(c.tb||c.v*.5),0),tvS=l10.reduce((s,c)=>s+c.v,0),tkR=tvS>0?tbS/tvS:.5;
+  let obv5=0;c5m.forEach((c,i)=>{if(i>0){if(c.c>c5m[i-1].c)obv5+=c.v;else if(c.c<c5m[i-1].c)obv5-=c.v;}});
+  const instFlow=cvdD.s5*.4+(obv5>0?.3:-.3)+(tkR>0.55?.3:tkR<0.45?-.3:0);
+  const ind={price,ema21,ema55,ema200,rsiV,atrV,adxV,macdD,bbD,ichiD,cvdD,wD,iD,tkR,instFlow,volR,regKey:regD.key||'RANGING',regData:regD};
+  const tfSets=[{tf:'1m',cs:c1m},{tf:'3m',cs:c3m},{tf:'5m',cs:c5m},{tf:'15m',cs:c15m},{tf:'30m',cs:c30m},{tf:'1h',cs:c1h},{tf:'4h',cs:c4h}];
+  const mtfR=tfSets.map(({tf,cs})=>{
+    if(!cs.length)return{tf,bias:'NEUT',rsiV:50,adxV:20,str:'M'};
+    const cl2=cs.map(c=>c.c),r=rsi(cl2,14),a=adx(cs,14),m=macd(cl2),e21x=ema(cl2,21),e55x=ema(cl2,55),cv2=cvdEngine(cs);
+    const bull=(m.hist>0?1.5:0)+(r>52?1:0)+(e21x[e21x.length-1]>e55x[e55x.length-1]?1.5:0)+(cv2.s5>0?.8:0);
+    const bN=bull/4.8;return{tf,bias:bN>0.55?'BULL':bN<0.45?'BEAR':'NEUT',rsiV:r,adxV:a,str:a>28?'H':a<18?'L':'M'};
+  });
+  updMTF(mtfR);
+  const mtfL=mtfR.filter(t=>t.bias==='BULL').length,mtfS=mtfR.filter(t=>t.bias==='BEAR').length;
+  const mtfDir=mtfL>=3?'LONG':mtfS>=3?'SHORT':'NONE';
+  const evalDir=(dir)=>{
+    const rf=REGF[regD.key||'RANGING'],regOk=dir==='LONG'?rf.aL:rf.aS;
+    if(!regOk)return{valid:false,reason:'Regimen bloquea '+dir,score:0,conf:{nPass:0,cs:[]}};
+    if(dir==='LONG'&&ichiD.below)return{valid:false,reason:'Ichimoku: bajo nube',score:0,conf:{nPass:0,cs:[]}};
+    if(dir==='SHORT'&&ichiD.above)return{valid:false,reason:'Ichimoku: sobre nube',score:0,conf:{nPass:0,cs:[]}};
+    const conf=checkConf(dir,ind);
+    if(conf.nPass<KS.minConf)return{valid:false,reason:'Solo '+conf.nPass+'/7 confluencias',score:0,conf};
+    const sc=calcScore(dir,ind,conf,regD.key||'RANGING');
+    const adj=mtfDir!=='NONE'&&mtfDir!==dir?sc*.8:sc;
+    if(adj<KS.minScore)return{valid:false,reason:'Score '+adj.toFixed(1)+' < '+KS.minScore,score:adj,conf};
+    return{valid:true,reason:conf.nPass+'/7 conf | R²:'+regD.r2.toFixed(2)+' | CVD:'+cvdD.signal,score:adj,conf};
+  };
+  const lE=evalDir('LONG'),sE=evalDir('SHORT');
+  let bestDir=null,bestEval=null;
+  if(lE.valid&&sE.valid){bestDir=lE.score>=sE.score?'LONG':'SHORT';bestEval=lE.score>=sE.score?lE:sE;}
+  else if(lE.valid){bestDir='LONG';bestEval=lE;}
+  else if(sE.valid){bestDir='SHORT';bestEval=sE;}
+  const lS=calcScore('LONG',ind,checkConf('LONG',ind),regD.key||'RANGING');
+  const sS=calcScore('SHORT',ind,checkConf('SHORT',ind),regD.key||'RANGING');
+  const actConf=bestDir?bestEval.conf:checkConf('LONG',ind);
+  const ksR=evalKS(regD.key||'RANGING',adxV,volR,bestEval?.score||0,actConf.nPass,regD);
+  const sent=calcSent(cvdD.s5);
+  updRegPill(regD,ksR.trig);
+  updSigBox(bestDir,bestEval,ksR.trig,price,atrV);
+  updScoring(lS,sS,cvdD.score,instFlow);
+  updCVDPanel(cvdD,cvdD15,cvdD1h);
+  updConf(actConf,bestDir);
+  updMetrics(adxV,rsiV,atrV,macdD,bbD,price,regD,volR,ichiD);
+  updSent(sent);
+  updMiniCVD(c5m);updMiniVol(c5m);
+  if(bestDir&&!ksR.trig){addFeed(sym,bestDir,bestEval.score,price);if(voiceOn){const d=bestDir==='LONG'?'largo':'corto';speak('Senal '+d+' en '+sym.replace('USDT','')+'. Score '+bestEval.score.toFixed(1)+'.');}}
+}
+
+/* ==== UI UPDATERS ==== */
+function updRegPill(reg,blocked){
+  const p=document.getElementById('rpill');if(!p)return;
+  p.className=blocked?'rpill bk':reg.cls2||'rpill';
+  document.getElementById('rpLbl').textContent=blocked?'\u26D4 BLOQUEADO':reg.name;
+  document.getElementById('rpSub').textContent='ADX:'+reg.adxV.toFixed(0)+' R\u00B2:'+reg.r2.toFixed(2)+' Vol:'+reg.volR.toFixed(1)+'x';
+}
+function updSigBox(dir,ev,blocked,price,atrV){
+  const box=document.getElementById('sigBox'),de=document.getElementById('sigDir'),sc=document.getElementById('sigSc'),me=document.getElementById('sigMeta'),lv=document.getElementById('sigLvl');
+  if(blocked){box.className='sb blocked';de.className='sd short';de.innerHTML='<span>\u26D4 KS ACTIVO</span>';sc.textContent='--';sc.className='ss wait';me.textContent='Kill switch activo.';lv.style.display='none';return;}
+  if(dir){
+    const isL=dir==='LONG';box.className='sb '+(isL?'long':'short');de.className='sd '+(isL?'long':'short');
+    de.innerHTML='<span>'+(isL?'\u25B2 LONG':'\u25BC SHORT')+'</span>';sc.textContent=ev.score.toFixed(1);sc.className='ss '+(isL?'long':'short');me.textContent=ev.reason;
+    const sld=atrV*1.5,tpd=sld*2.5;
+    document.getElementById('slE').textContent='$'+price.toFixed(4);
+    document.getElementById('slS').textContent='$'+(isL?price-sld:price+sld).toFixed(4);
+    document.getElementById('slT').textContent='$'+(isL?price+tpd:price-tpd).toFixed(4);
+    document.getElementById('rrSt').textContent='2.5x';lv.style.display='grid';
+  }else{
+    box.className='sb wait';de.className='sd wait';de.innerHTML='<span>\u2014 ESPERA \u2014</span>';sc.textContent='\u2014';sc.className='ss wait';me.textContent='Sin confluencias. Esperando setup...';lv.style.display='none';
+  }
+}
+function updScoring(ls,ss,cvdSc,inst){
+  const set=(bar,num,w,val)=>{document.getElementById(bar).style.width=(Math.min(Math.max(w*10,0),100))+'%';document.getElementById(num).textContent=typeof val==='number'?val.toFixed(1):val;};
+  set('sCVD','nCVD',cvdSc/10,cvdSc);set('sLNG','nLNG',ls/10,ls);set('sSHT','nSHT',ss/10,ss);
+  const iN=Math.max(0,Math.min(1,(inst+.5)));document.getElementById('sFLW').style.width=(iN*100)+'%';document.getElementById('nFLW').textContent=(inst*100).toFixed(0)+'%';
+  const ml=Math.max(0,Math.min(1,.5+((ls-5)/10)));document.getElementById('sML').style.width=(ml*100)+'%';document.getElementById('nML').textContent=(ml*100).toFixed(0)+'%';
+}
+function updCVDPanel(d5,d15,d1h){
+  const fmt=v=>(v>0?'+':'')+v.toFixed(3),col=v=>v>0?'var(--grn)':v<0?'var(--red)':'var(--ts)';
+  // Score ring
+  const sc=d5.score,scCol=sc>=7?'var(--grn)':sc>=5.5?'var(--acc)':sc>=4?'var(--yel)':'var(--red)';
+  const snEl=document.getElementById('cvdScNum');if(snEl){snEl.textContent=sc.toFixed(1);snEl.style.color=scCol;}
+  const piEl=document.getElementById('cvdPI');if(piEl){piEl.textContent='PI:'+d5.pressureIdx.toFixed(2);piEl.style.color=d5.pressureIdx>1.1?'var(--grn)':d5.pressureIdx<0.9?'var(--red)':'var(--ts)';}
+  // Momentum bar
+  const mom=(sc-5)/5,mf=document.getElementById('cvdMomFill');
+  if(mf){if(mom>=0){mf.style.width=(mom*50)+'%';mf.style.marginLeft='50%';mf.style.background='var(--grn)';}else{mf.style.width=(Math.abs(mom)*50)+'%';mf.style.marginLeft=(50+mom*50)+'%';mf.style.background='var(--red)';}}
+  // Accel
+  const aDir=d5.accel>0.02?'\u2197':d5.accel<-0.02?'\u2198':'\u2192';
+  const aCol=d5.accel>0.02?'var(--grn)':d5.accel<-0.02?'var(--red)':'var(--ts)';
+  const arEl=document.getElementById('cvdArrow');if(arEl){arEl.textContent=aDir;arEl.style.color=aCol;}
+  const avEl=document.getElementById('cvdAccelVal');if(avEl){avEl.textContent=(d5.accel>0?'+':'')+d5.accel.toFixed(3);avEl.style.color=aCol;}
+  const tdEl=document.getElementById('cvdTkD');if(tdEl){const tka=d5.tkrAccel||0;tdEl.textContent='Taker\u0394:'+(tka>0?'+':'')+((tka)*100).toFixed(1)+'%';tdEl.style.color=tka>0.03?'var(--grn)':tka<-0.03?'var(--red)':'var(--tm)';}
+  // Slopes
+  const s5El=document.getElementById('cvd5');if(s5El){s5El.textContent=fmt(d5.s5);s5El.style.color=col(d5.s5);}
+  const s15El=document.getElementById('cvd15');if(s15El){s15El.textContent=fmt(d15.s5);s15El.style.color=col(d15.s5);}
+  const s1hEl=document.getElementById('cvd1h');if(s1hEl){s1hEl.textContent=fmt(d1h.s5);s1hEl.style.color=col(d1h.s5);}
+  const divEl=document.getElementById('cvdDiv');if(divEl){divEl.textContent=d5.div?'SI \u26A0':d5.divLeve?'LEVE \u26A0':'NO \u2713';divEl.style.color=d5.div?'var(--red)':d5.divLeve?'var(--yel)':'var(--grn)';}
+  const tkEl=document.getElementById('cvdTk');if(tkEl){tkEl.textContent=(d5.tkR*100).toFixed(1)+'% 5v:'+(d5.tkR5*100).toFixed(0)+'%';tkEl.style.color=d5.tkR>0.56?'var(--grn)':d5.tkR<0.44?'var(--red)':'var(--ts)';}
+  const oeEl=document.getElementById('cvdOBV');if(oeEl){oeEl.textContent=(d5.obvSig>0?'\u25B2 ALCISTA':'\u25BC BAJISTA')+' | '+fmt(d5.obvSlope);oeEl.style.color=d5.obvSig>0?'var(--grn)':'var(--red)';}
+  const sb=document.getElementById('cvdSB');if(sb){sb.className='cvdsb '+d5.sc;}
+  const slEl=document.getElementById('cvdSL');if(slEl)slEl.textContent=d5.signal;
+  const ssEl=document.getElementById('cvdSS');if(ssEl)ssEl.textContent=d5.ss;
+}
+function updConf(conf,dir){
+  document.getElementById('clist').innerHTML=conf.cs.map(c=>'<div class="ci '+c.state+'"><div class="cidot '+c.state+'"></div><div class="ciname">'+c.name+'</div><div class="cival '+c.state+'">'+c.val+'</div><div class="ciw">'+c.w+'</div></div>').join('');
+  const np=conf.nPass,wS=conf.wScore,col=np>=5?'var(--grn)':np>=3?'var(--yel)':'var(--red)';
+  document.getElementById('cstot').textContent=np+'/7';document.getElementById('cstot').style.color=col;
+  document.getElementById('csbf').style.width=(wS*100)+'%';document.getElementById('csbf').style.background=col;
+  document.getElementById('cslbl').textContent=np>=5?'Setup optimo':np>=3?'Senal valida':np>=1?'Insuficiente':'Sin setup';
+}
+function updMetrics(adxV,rsiV,atrV,mcd,bbD,price,reg,volR,ichiD){
+  const sa=(id,v,c,s,si)=>{const el=document.getElementById(id);if(!el)return;el.textContent=v;if(c)el.style.color=c;if(s&&si){const si2=document.getElementById(si);if(si2)si2.textContent=s;}};
+  sa('mADX',adxV.toFixed(1),adxV>25?'var(--grn)':adxV>18?'var(--yel)':'var(--tm)',adxV>28?'STRONG':adxV>18?'MODERATE':'WEAK','mADXs');
+  sa('mRSI',rsiV.toFixed(0),rsiV>70?'var(--red)':rsiV<30?'var(--grn)':'var(--tp)',rsiV>70?'OVERBOUGHT':rsiV<30?'OVERSOLD':'NEUTRAL','mRSIs');
+  sa('mATR',((atrV/price)*100).toFixed(2)+'%',null);
+  sa('mMACDh',(mcd.hist>0?'+':'')+mcd.hist.toFixed(5),mcd.hist>0?'var(--grn)':'var(--red)',mcd.hist>mcd.prev?'EXPANDING':'CONTRACTING','mMACDs');
+  sa('mBB',(bbD.pct*100).toFixed(0)+'%',bbD.pct>.8?'var(--red)':bbD.pct<.2?'var(--grn)':'var(--tp)',bbD.pct>.8?'UPPER':bbD.pct<.2?'LOWER':'MID','mBBs');
+  sa('mRR','2.5x','var(--acc)');
+  sa('mVOL',volR.toFixed(1)+'x',volR>2?'var(--amb)':volR>1.2?'var(--yel)':'var(--grn)');
+  const ist=document.getElementById('ichiSt');
+  if(ist&&ichiD){if(ichiD.above){ist.textContent='\u2705 Sobre nube';ist.style.color='var(--grn)';}else if(ichiD.below){ist.textContent='\uD83D\uDD34 Bajo nube';ist.style.color='var(--red)';}else{ist.textContent='\u26A0 En nube';ist.style.color='var(--yel)';}}
+  const ichiEl=document.getElementById('mICHI');
+  if(ichiEl&&ichiD){ichiEl.textContent=ichiD.above?'ABOVE':ichiD.below?'BELOW':'IN';ichiEl.style.color=ichiD.above?'var(--grn)':ichiD.below?'var(--red)':'var(--yel)';}
+  sa('mREG',reg.name,reg.name.includes('UP')||reg.name.includes('BULL')?'var(--grn)':reg.name.includes('DOWN')||reg.name.includes('BEAR')?'var(--red)':reg.name==='VOLATILE'?'var(--amb)':'var(--yel)','R\u00B2:'+reg.r2.toFixed(2),'mREGs');
+  document.getElementById('adxSt').textContent=adxV.toFixed(1);document.getElementById('adxSt').style.color=adxV>25?'var(--grn)':'var(--yel)';
+}
+function updSent(s){
+  const rows=[{lbl:'BTC 24h',val:Math.max(0,Math.min(1,(s.btcC+10)/20)),col:s.btcC>=0?'var(--grn)':'var(--red)',txt:(s.btcC>=0?'+':'')+s.btcC.toFixed(1)+'%'},{lbl:'ETH 24h',val:Math.max(0,Math.min(1,(s.ethC+10)/20)),col:s.ethC>=0?'var(--grn)':'var(--red)',txt:(s.ethC>=0?'+':'')+s.ethC.toFixed(1)+'%'},{lbl:'Breadth',val:s.br,col:s.br>.6?'var(--grn)':s.br<.4?'var(--red)':'var(--yel)',txt:(s.br*100).toFixed(0)+'%'},{lbl:'Funding',val:Math.max(0,Math.min(1,.5-s.avFund*5)),col:s.avFund>.05?'var(--red)':s.avFund<-.05?'var(--grn)':'var(--yel)',txt:(s.avFund>0?'+':'')+s.avFund.toFixed(3)+'%'}];
+  document.getElementById('sentRows').innerHTML=rows.map(r=>'<div class="sr"><div class="srl">'+r.lbl+'</div><div class="srtr"><div class="srfi" style="width:'+(r.val*100)+'%;background:'+r.col+'"></div><div class="srmid"></div></div><div class="srv" style="color:'+r.col+'">'+r.txt+'</div></div>').join('');
+  const v=document.getElementById('sentV'),lbl=document.getElementById('svLbl'),sub=document.getElementById('svSub');
+  v.style.borderColor=s.vc;lbl.textContent=s.verdict;lbl.style.color=s.vc;sub.textContent=s.vs;
+}
+function addFeed(sym,dir,score,price){
+  const f=document.getElementById('feed'),d=document.createElement('div');d.className='fi';
+  const now=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',timeZone:'America/Bogota'});
+  d.innerHTML='<div class="fd '+dir.toLowerCase()+'">'+(dir==='LONG'?'\u25B2':'\u25BC')+' '+dir+' '+sym.replace('USDT','')+'</div><div class="fdt">$'+price.toFixed(4)+' | Score: '+score.toFixed(1)+'/10 | '+now+'</div>';
+  f.prepend(d);if(f.children.length>15)f.removeChild(f.lastChild);
+}
+async function init(){await updPrices();await updFunding();await runAnalysis(curSym);if(synth)synth.getVoices();}
+init();
+setInterval(updPrices,10000);setInterval(updFunding,60000);setInterval(()=>runAnalysis(curSym),30000);
+</script>
+</body>
+</html>

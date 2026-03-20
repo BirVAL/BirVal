@@ -393,7 +393,7 @@ function initTV(sym,tf){
     +'&utm_source='+window.location.hostname;
   c.innerHTML='<iframe id="tvf" src="'+src+'" style="width:100%;height:'+h+'px;border:none;" allowfullscreen frameborder="0"></iframe>';
 }
-initTV(curSym,curTF);
+// initTV called after DOM ready (below)
 function chgSym(sym){curSym=sym;document.getElementById('chSym').textContent=sym;document.querySelectorAll('.wi').forEach(i=>i.classList.remove('on'));document.querySelector('[data-s="'+sym+'"]')?.classList.add('on');initTV(sym,curTF);updChHdr(sym);runAnalysis(sym);}
 function chgTF(tf,btn){curTF=tf;document.querySelectorAll('.tfb').forEach(b=>b.classList.remove('on'));btn.classList.add('on');initTV(curSym,tf);}
 function updChHdr(sym){
@@ -403,11 +403,10 @@ function updChHdr(sym){
   const c=parseFloat(chgC[sym]||0),el=document.getElementById('chCh');
   el.textContent=(c>=0?'+':'')+c.toFixed(2)+'%';el.style.color=c>=0?'var(--grn)':'var(--red)';
 }
-function buildWL(){
+function 
   const c=document.getElementById('wlItems');c.innerHTML='';
   SYMS.forEach(s=>{const d=document.createElement('div');d.className='wi'+(s===curSym?' on':'');d.setAttribute('data-s',s);d.innerHTML='<div class="wn">'+s.replace('USDT','')+'</div><div class="wp" id="wp-'+s+'">&#8212;</div><div class="wc" id="wc-'+s+'">&#8212;</div>';d.onclick=()=>chgSym(s);c.appendChild(d);});
 }
-buildWL();
 async function updPrices(){
   try{
     const r=await fetch(BAPI+'/api/v3/ticker/24hr?symbols=['+SYMS.map(s=>'"'+s+'"').join(',')+']');
@@ -802,9 +801,13 @@ function addFeed(sym,dir,score,price){
   d.innerHTML='<div class="fd '+dir.toLowerCase()+'">'+(dir==='LONG'?'\u25B2':'\u25BC')+' '+dir+' '+sym.replace('USDT','')+'</div><div class="fdt">$'+price.toFixed(4)+' | Score: '+score.toFixed(1)+'/10 | '+now+'</div>';
   f.prepend(d);if(f.children.length>15)f.removeChild(f.lastChild);
 }
-async function init(){await updPrices();await updFunding();await runAnalysis(curSym);if(synth)synth.getVoices();}
-init();
 setInterval(updPrices,10000);setInterval(updFunding,60000);setInterval(()=>runAnalysis(curSym),30000);
+// Init chart and data after DOM ready
+document.addEventListener('DOMContentLoaded',function(){
+  buildWL();initTV(curSym,curTF);
+  updPrices().then(()=>updFunding()).then(()=>runAnalysis(curSym));
+  if(synth)synth.getVoices();
+});
 </script>
 </body>
 </html>

@@ -49,21 +49,21 @@ body::before{content:"";position:fixed;inset:0;background:repeating-linear-gradi
 .rpill.bk{border-color:var(--red);background:rgba(255,23,68,.15);animation:ksblink .5s infinite;}
 .rp-lbl{font-family:var(--cond);font-size:10px;font-weight:700;letter-spacing:1.5px;}
 .rp-sub{font-size:8px;color:var(--ts);}
-.wrap{display:grid;grid-template-columns:148px 1fr 244px;height:calc(100vh - var(--HDR) - var(--BOT));}
+.wrap{display:grid;grid-template-columns:148px 1fr 244px;height:calc(100vh - var(--HDR) - var(--BOT));overflow:hidden;}
 .wl{background:var(--bg1);border-right:1px solid var(--bdr);overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;}
 .wl-h{padding:5px 8px;font-size:8px;letter-spacing:2px;color:var(--acc);border-bottom:1px solid var(--bdr);background:var(--bg2);font-family:var(--cond);font-weight:600;}
 .wi{padding:6px 8px;border-bottom:1px solid rgba(15,53,96,.35);cursor:pointer;transition:all .1s;border-left:2px solid transparent;}
 .wi:hover,.wi.on{background:var(--bg3);border-left-color:var(--acc);}
 .wn{font-size:11px;font-weight:600;font-family:var(--cond);} .wp{font-size:10px;color:var(--ts);margin-top:1px;}
 .wc{font-size:10px;font-weight:600;margin-top:1px;} .wc.pos{color:var(--grn);} .wc.neg{color:var(--red);}
-.ca{display:flex;flex-direction:column;background:var(--bg0);overflow:hidden;}
+.ca{display:flex;flex-direction:column;background:var(--bg0);overflow:hidden;min-height:0;}
 .ch{display:flex;align-items:center;justify-content:space-between;padding:5px 12px;background:var(--bg1);border-bottom:1px solid var(--bdr);flex-shrink:0;}
 .cs{font-family:var(--cond);font-size:15px;font-weight:700;color:var(--acc);letter-spacing:1px;}
 .cp{font-size:19px;font-weight:700;} .cc{font-size:11px;margin-top:1px;}
 .tfg{display:flex;gap:3px;}
 .tfb{padding:2px 7px;border:1px solid var(--bdr);background:transparent;color:var(--ts);font-family:var(--mono);font-size:9px;cursor:pointer;transition:all .12s;}
 .tfb:hover,.tfb.on{background:rgba(0,200,240,.1);color:var(--acc);border-color:var(--acc);}
-#tvc{flex:1;min-height:0;}
+#tvc{flex:1;min-height:300px;overflow:hidden;}
 .rp{background:var(--bg1);border-left:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden;}
 .sec{border-bottom:1px solid var(--bdr);flex-shrink:0;}
 .sh{padding:4px 9px;font-size:8px;letter-spacing:2px;color:var(--acc);background:var(--bg2);display:flex;align-items:center;gap:5px;font-family:var(--cond);font-weight:600;}
@@ -364,9 +364,9 @@ setInterval(tick,1000);tick();
 function toggleVoice(){
   voiceOn=!voiceOn;
   const b=document.getElementById('vbtn');
-  b.textContent=voiceOn?'\u{1F50A} VOZ ON':'\u{1F50A} VOZ';
+  b.textContent=voiceOn?'🔊 VOZ ON':'🔊 VOZ';
   b.className='vbtn'+(voiceOn?' on':'');
-  if(voiceOn)speak('Sistema de voz activado.');
+  if(voiceOn)speak('Sistema de voz activado. birVal v6 listo.');
 }
 function speak(txt){
   if(!voiceOn||!synth||txt===lastSpk)return;
@@ -777,7 +777,7 @@ function updMetrics(adxV,rsiV,atrV,mcd,bbD,price,reg,volR,ichiD){
   sa('mRR','2.5x','var(--acc)');
   sa('mVOL',volR.toFixed(1)+'x',volR>2?'var(--amb)':volR>1.2?'var(--yel)':'var(--grn)');
   const ist=document.getElementById('ichiSt');
-  if(ist&&ichiD){if(ichiD.above){ist.textContent='\u2705 Sobre nube';ist.style.color='var(--grn)';}else if(ichiD.below){ist.textContent='\uD83D\uDD34 Bajo nube';ist.style.color='var(--red)';}else{ist.textContent='\u26A0 En nube';ist.style.color='var(--yel)';}}
+  if(ist&&ichiD){if(ichiD.above){ist.textContent='\u2705 Sobre nube';ist.style.color='var(--grn)';}else if(ichiD.below){ist.textContent='[BAJO] Bajo nube';ist.style.color='var(--red)';}else{ist.textContent='\u26A0 En nube';ist.style.color='var(--yel)';}}
   const ichiEl=document.getElementById('mICHI');
   if(ichiEl&&ichiD){ichiEl.textContent=ichiD.above?'ABOVE':ichiD.below?'BELOW':'IN';ichiEl.style.color=ichiD.above?'var(--grn)':ichiD.below?'var(--red)':'var(--yel)';}
   sa('mREG',reg.name,reg.name.includes('UP')||reg.name.includes('BULL')?'var(--grn)':reg.name.includes('DOWN')||reg.name.includes('BEAR')?'var(--red)':reg.name==='VOLATILE'?'var(--amb)':'var(--yel)','R\u00B2:'+reg.r2.toFixed(2),'mREGs');

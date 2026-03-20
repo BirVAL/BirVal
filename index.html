@@ -347,16 +347,16 @@ body::before{content:"";position:fixed;inset:0;background:repeating-linear-gradi
   </div>
 </div>
 <script>
-const SYMS=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','TAOUSDT','TRUMPUSDT','AVAXUSDT','ARBUSDT','OPUSDT','LINKUSDT','HBARUSDT','XRPUSDT'];
-const FUTS=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','OPUSDT','LINKUSDT','HBARUSDT','TAOUSDT','XRPUSDT','TRUMPUSDT','AVAXUSDT','ARBUSDT'];
-const FAPI='https://fapi.binance.com',BAPI='https://api.binance.com';
-let curSym='OPUSDT',curTF='5',priceC={},chgC={},manPause=false,voiceOn=false,lastSpk='',fdCache={};
-const synth=window.speechSynthesis;
+var SYMS=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','TAOUSDT','TRUMPUSDT','AVAXUSDT','ARBUSDT','OPUSDT','LINKUSDT','HBARUSDT','XRPUSDT'];
+var FUTS=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','OPUSDT','LINKUSDT','HBARUSDT','TAOUSDT','XRPUSDT','TRUMPUSDT','AVAXUSDT','ARBUSDT'];
+var FAPI='https://fapi.binance.com',BAPI='https://api.binance.com';
+var curSym='OPUSDT',curTF='5',priceC={},chgC={},manPause=false,voiceOn=false,lastSpk='',fdCache={};
+var synth=window.speechSynthesis;
 // Kill switch config
-const KS={maxStreak:3,minADX:12,maxVolReg:2.0,minScore:6.0,minConf:3};
-let ksState={streak:0,triggered:false};
+var KS={maxStreak:3,minADX:12,maxVolReg:2.0,minScore:6.0,minConf:3};
+var ksState={streak:0,triggered:false};
 // Dynamic regime filter (updated by detectReg)
-const REGF={TRENDING_UP:{aL:true,aS:false,sb:.5},TRENDING_DOWN:{aL:false,aS:true,sb:.5},RANGING:{aL:true,aS:true,sb:0},VOLATILE:{aL:false,aS:false,sb:-1.5},UNKNOWN:{aL:true,aS:true,sb:-.3}};
+var REGF={TRENDING_UP:{aL:true,aS:false,sb:.5},TRENDING_DOWN:{aL:false,aS:true,sb:.5},RANGING:{aL:true,aS:true,sb:0},VOLATILE:{aL:false,aS:false,sb:-1.5},UNKNOWN:{aL:true,aS:true,sb:-.3}};
 
 function tick(){document.getElementById('clk').textContent=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Bogota'})+' COT';}
 setInterval(tick,1000);tick();
@@ -388,7 +388,7 @@ function initTV(sym,tf){
   const src='https://www.tradingview.com/widgetembed/?frameElementId=tvf'
     +'&symbol=BINANCE:'+sym+'&interval='+iv
     +'&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=1'
-    +'&studies=RSI@tv-basicstudies!MACD@tv-basicstudies!Volume@tv-basicstudies'
+    +'&studies=RSI%40tv-basicstudies%1FMACD%40tv-basicstudies%1FVolume%40tv-basicstudies'
     +'&theme=dark&style=1&timezone=America/Bogota&withdateranges=1'
     +'&utm_source='+window.location.hostname;
   c.innerHTML='<iframe id="tvf" src="'+src+'" style="width:100%;height:'+h+'px;border:none;" allowfullscreen frameborder="0"></iframe>';
@@ -403,7 +403,7 @@ function updChHdr(sym){
   const c=parseFloat(chgC[sym]||0),el=document.getElementById('chCh');
   el.textContent=(c>=0?'+':'')+c.toFixed(2)+'%';el.style.color=c>=0?'var(--grn)':'var(--red)';
 }
-function 
+function buildWL(){
   const c=document.getElementById('wlItems');c.innerHTML='';
   SYMS.forEach(s=>{const d=document.createElement('div');d.className='wi'+(s===curSym?' on':'');d.setAttribute('data-s',s);d.innerHTML='<div class="wn">'+s.replace('USDT','')+'</div><div class="wp" id="wp-'+s+'">&#8212;</div><div class="wc" id="wc-'+s+'">&#8212;</div>';d.onclick=()=>chgSym(s);c.appendChild(d);});
 }
@@ -641,75 +641,15 @@ function calcSent(cvdSlp){
 async function updFunding(){
   try{const r=await fetch(FAPI+'/fapi/v1/premiumIndex');const d=await r.json();d.forEach(it=>{fdCache[it.symbol]=parseFloat(it.lastFundingRate)*100;});const shown=SYMS.filter(s=>FUTS.includes(s)).slice(0,7);document.getElementById('fundCont').innerHTML=shown.map(s=>{const v=fdCache[s]||0;return'<div class="fund-r"><span class="fund-s">'+s.replace('USDT','')+'</span><span class="fund-v '+(v>0?'pos':'neg')+'">'+(v>0?'+':'')+v.toFixed(3)+'%</span></div>';}).join('');}catch{}
 }
-function updHeatmap(data){const sorted=[...data].sort((a,b)=>Math.abs(b.priceChangePercent)-Math.abs(a.priceChangePercent)).slice(0,12);document.getElementById('hmGrid').innerHTML=sorted.map(it=>{const c=parseFloat(it.priceChangePercent),i=Math.min(Math.abs(c)/8,1),bg=c>=0?'rgba(0,230,118,'+(0.1+i*.5)+')':'rgba(255,23,68,'+(0.1+i*.5)+')',col=c>=0?'var(--grn)':'var(--red)';return'<div class="hmc" style="background:'+bg+';color:'+col+'" onclick="chgSym(''+it.symbol+'')">'+it.symbol.replace('USDT','')+'<br>'+c.toFixed(1)+'%</div>';}).join('');}
-
-const mkC=(id,col)=>new Chart(document.getElementById(id).getContext('2d'),{type:'line',data:{labels:[],datasets:[{data:[],borderColor:col,backgroundColor:col.replace(',1)',',0.06)'),borderWidth:1.5,fill:true,tension:.4,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}}}});
-const cvdCh=mkC('cvdChart','rgba(0,200,240,1)'),volCh=mkC('volChart','rgba(167,139,250,1)');
-function updMiniCVD(cs){let cvd=0;const d=cs.slice(-30).map(c=>{const tb=c.tb||c.v*.5;cvd+=(tb-(c.v-tb));return cvd;});cvdCh.data.labels=d.map((_,i)=>i);cvdCh.data.datasets[0].data=d;const up=d[d.length-1]>d[0];cvdCh.data.datasets[0].borderColor=up?'rgba(0,230,118,1)':'rgba(255,23,68,1)';cvdCh.data.datasets[0].backgroundColor=up?'rgba(0,230,118,.05)':'rgba(255,23,68,.05)';cvdCh.update('none');}
-function updMiniVol(cs){const va=cs.slice(-30).reduce((s,c)=>s+c.v,0)/30,d=cs.slice(-30).map(c=>c.v/va);volCh.data.labels=d.map((_,i)=>i);volCh.data.datasets[0].data=d;volCh.update('none');}
-function updMTF(res){document.getElementById('mtft').innerHTML=res.map(({tf,bias,rsiV,adxV,str})=>'<div class="mtfr'+(tf==='5m'?' hl':'')+'"><div class="mtftf">'+tf+'</div><div class="mtfbi '+(bias==='BULL'?'bull':bias==='BEAR'?'bear':'neut')+'">'+(bias==='BULL'?'\u25B2 BULL':bias==='BEAR'?'\u25BC BEAR':'&#8212; NEUT')+'</div><div class="mtfri" style="color:'+(rsiV>70?'var(--red)':rsiV<30?'var(--grn)':'var(--ts)')+'">'+rsiV.toFixed(0)+'</div><div class="mtfad" style="color:'+(adxV>25?'var(--grn)':adxV>18?'var(--yel)':'var(--tm)')+'">'+adxV.toFixed(0)+'</div><div class="mtfst '+(str==='H'?'hi':str==='L'?'lo':'md')+'">'+str+'</div></div>').join('');}
-
-/* ==== MAIN ANALYSIS ==== */
-async function runAnalysis(sym){
-  document.getElementById('sigMeta').textContent='Descargando datos...';
-  const[c1m,c3m,c5m,c15m,c30m,c1h,c4h]=await Promise.all([kl(sym,'1m',100),kl(sym,'3m',100),kl(sym,'5m',200),kl(sym,'15m',200),kl(sym,'30m',100),kl(sym,'1h',100),kl(sym,'4h',100)]);
-  if(!c5m.length){document.getElementById('sigMeta').textContent='Error obteniendo datos';return;}
-  const cl=c5m.map(c=>c.c);
-  const e21a=ema(cl,21),e55a=ema(cl,55),e200a=ema(cl,200);
-  const ema21=e21a[e21a.length-1],ema55=e55a[e55a.length-1],ema200=e200a[e200a.length-1];
-  const rsiV=rsi(cl,14),atrV=atr(c5m,14),adxV=adx(c5m,14),macdD=macd(cl),bbD=bb(cl),ichiD=ichi(c5m);
-  const cvdD=cvdEngine(c5m),cvdD15=cvdEngine(c15m),cvdD1h=cvdEngine(c1h);
-  const wD=wyckoff(c5m),iD=ictF(c5m);
-  const price=c5m[c5m.length-1].c;
-  const lr=cl.slice(1).map((c,i)=>Math.log(c/(cl[i]+1e-9)));
-  const std5=Math.sqrt(lr.slice(-5).reduce((s,v)=>s+v*v,0)/5+1e-12),std20=Math.sqrt(lr.slice(-20).reduce((s,v)=>s+v*v,0)/20+1e-12);
-  const volR=std20>0?std5/std20:1;
-  const regD=detectReg(c5m,adxV);
-  const l10=c5m.slice(-10),tbS=l10.reduce((s,c)=>s+(c.tb||c.v*.5),0),tvS=l10.reduce((s,c)=>s+c.v,0),tkR=tvS>0?tbS/tvS:.5;
-  let obv5=0;c5m.forEach((c,i)=>{if(i>0){if(c.c>c5m[i-1].c)obv5+=c.v;else if(c.c<c5m[i-1].c)obv5-=c.v;}});
-  const instFlow=cvdD.s5*.4+(obv5>0?.3:-.3)+(tkR>0.55?.3:tkR<0.45?-.3:0);
-  const ind={price,ema21,ema55,ema200,rsiV,atrV,adxV,macdD,bbD,ichiD,cvdD,wD,iD,tkR,instFlow,volR,regKey:regD.key||'RANGING',regData:regD};
-  const tfSets=[{tf:'1m',cs:c1m},{tf:'3m',cs:c3m},{tf:'5m',cs:c5m},{tf:'15m',cs:c15m},{tf:'30m',cs:c30m},{tf:'1h',cs:c1h},{tf:'4h',cs:c4h}];
-  const mtfR=tfSets.map(({tf,cs})=>{
-    if(!cs.length)return{tf,bias:'NEUT',rsiV:50,adxV:20,str:'M'};
-    const cl2=cs.map(c=>c.c),r=rsi(cl2,14),a=adx(cs,14),m=macd(cl2),e21x=ema(cl2,21),e55x=ema(cl2,55),cv2=cvdEngine(cs);
-    const bull=(m.hist>0?1.5:0)+(r>52?1:0)+(e21x[e21x.length-1]>e55x[e55x.length-1]?1.5:0)+(cv2.s5>0?.8:0);
-    const bN=bull/4.8;return{tf,bias:bN>0.55?'BULL':bN<0.45?'BEAR':'NEUT',rsiV:r,adxV:a,str:a>28?'H':a<18?'L':'M'};
-  });
-  updMTF(mtfR);
-  const mtfL=mtfR.filter(t=>t.bias==='BULL').length,mtfS=mtfR.filter(t=>t.bias==='BEAR').length;
-  const mtfDir=mtfL>=3?'LONG':mtfS>=3?'SHORT':'NONE';
-  const evalDir=(dir)=>{
-    const rf=REGF[regD.key||'RANGING'],regOk=dir==='LONG'?rf.aL:rf.aS;
-    if(!regOk)return{valid:false,reason:'Regimen bloquea '+dir,score:0,conf:{nPass:0,cs:[]}};
-    if(dir==='LONG'&&ichiD.below)return{valid:false,reason:'Ichimoku: bajo nube',score:0,conf:{nPass:0,cs:[]}};
-    if(dir==='SHORT'&&ichiD.above)return{valid:false,reason:'Ichimoku: sobre nube',score:0,conf:{nPass:0,cs:[]}};
-    const conf=checkConf(dir,ind);
-    if(conf.nPass<KS.minConf)return{valid:false,reason:'Solo '+conf.nPass+'/7 confluencias',score:0,conf};
-    const sc=calcScore(dir,ind,conf,regD.key||'RANGING');
-    const adj=mtfDir!=='NONE'&&mtfDir!==dir?sc*.8:sc;
-    if(adj<KS.minScore)return{valid:false,reason:'Score '+adj.toFixed(1)+' < '+KS.minScore,score:adj,conf};
-    return{valid:true,reason:conf.nPass+'/7 conf | R²:'+regD.r2.toFixed(2)+' | CVD:'+cvdD.signal,score:adj,conf};
-  };
-  const lE=evalDir('LONG'),sE=evalDir('SHORT');
-  let bestDir=null,bestEval=null;
-  if(lE.valid&&sE.valid){bestDir=lE.score>=sE.score?'LONG':'SHORT';bestEval=lE.score>=sE.score?lE:sE;}
-  else if(lE.valid){bestDir='LONG';bestEval=lE;}
-  else if(sE.valid){bestDir='SHORT';bestEval=sE;}
-  const lS=calcScore('LONG',ind,checkConf('LONG',ind),regD.key||'RANGING');
-  const sS=calcScore('SHORT',ind,checkConf('SHORT',ind),regD.key||'RANGING');
-  const actConf=bestDir?bestEval.conf:checkConf('LONG',ind);
-  const ksR=evalKS(regD.key||'RANGING',adxV,volR,bestEval?.score||0,actConf.nPass,regD);
-  const sent=calcSent(cvdD.s5);
-  updRegPill(regD,ksR.trig);
-  updSigBox(bestDir,bestEval,ksR.trig,price,atrV);
-  updScoring(lS,sS,cvdD.score,instFlow);
-  updCVDPanel(cvdD,cvdD15,cvdD1h);
-  updConf(actConf,bestDir);
-  updMetrics(adxV,rsiV,atrV,macdD,bbD,price,regD,volR,ichiD);
-  updSent(sent);
-  updMiniCVD(c5m);updMiniVol(c5m);
-  if(bestDir&&!ksR.trig){addFeed(sym,bestDir,bestEval.score,price);if(voiceOn){const d=bestDir==='LONG'?'largo':'corto';speak('Senal '+d+' en '+sym.replace('USDT','')+'. Score '+bestEval.score.toFixed(1)+'.');}}
+function updHeatmap(data){
+  var sorted=[...data].sort((a,b)=>Math.abs(b.priceChangePercent)-Math.abs(a.priceChangePercent)).slice(0,12);
+  document.getElementById('hmGrid').innerHTML=sorted.map(function(it){
+    var c=parseFloat(it.priceChangePercent),i=Math.min(Math.abs(c)/8,1);
+    var bg=c>=0?'rgba(0,230,118,'+(0.1+i*.5)+')':'rgba(255,23,68,'+(0.1+i*.5)+')';
+    var col=c>=0?'var(--grn)':'var(--red)';
+    var sym=it.symbol;
+    return '<div class="hmc" style="background:'+bg+';color:'+col+'" data-s="'+sym+'" onclick="chgSym(this.dataset.s)">'+sym.replace('USDT','')+'<br>'+c.toFixed(1)+'%</div>';
+  }).join('');
 }
 
 /* ==== UI UPDATERS ==== */
@@ -803,11 +743,12 @@ function addFeed(sym,dir,score,price){
 }
 setInterval(updPrices,10000);setInterval(updFunding,60000);setInterval(()=>runAnalysis(curSym),30000);
 // Init chart and data after DOM ready
-document.addEventListener('DOMContentLoaded',function(){
-  buildWL();initTV(curSym,curTF);
-  updPrices().then(()=>updFunding()).then(()=>runAnalysis(curSym));
+window.onload=function(){
+  buildWL();
+  initTV(curSym,curTF);
+  updPrices().then(function(){return updFunding();}).then(function(){return runAnalysis(curSym);});
   if(synth)synth.getVoices();
-});
+};
 </script>
 </body>
 </html>

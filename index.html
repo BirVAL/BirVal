@@ -1,24 +1,3 @@
-# ══════════════════════════════════════════════════════════════════════════════
-# birVal v7.1 — INSTITUTIONAL GRADE (AUDITADO + CORREGIDO)
-# ══════════════════════════════════════════════════════════════════════════════
-# FIXES CRÍTICOS v7.1:
-#   FIX-01: Score threshold bajado de 5.5 → 4.0 (umbral alcanzable con datos reales)
-#   FIX-02: ScoreResult.detail() corregido — atributos inexistentes eliminados
-#   FIX-03: ScoreResult.total_pct añadido como propiedad calculada
-#   FIX-04: DCALevels dataclass corregido — añadidos e1_pct, e2_pct, e3_pct
-#   FIX-05: Config añadidos SLIPPAGE_LIMIT, SLIPPAGE_MARKET, FEE_MAKER, FEE_TAKER, TRACK_MAX_HOURS
-#   FIX-06: Signal dataclass añadidos campos is_golden y execution
-#   FIX-07: hmac.new → hmac.new (corrección de importación)
-#   FIX-08: /status command separado correctamente de /gp
-#   FIX-09: OB MIN_PERSIST_CYCLES reducido de 3 → 2 (menos restrictivo)
-#   FIX-10: LIQ detection mejorada — umbral de funding bajado de 0.0003 → 0.00005
-#   FIX-11: score.passed() llamado como método correctamente en _analyze
-#   FIX-12: COOLDOWN_MIN reducido de 20 → 10 min para no perder señales
-#   FIX-13: OI_MIN_CHANGE ajustado para scoring más sensible
-#   FIX-14: CVD scoring más gradual — captura tendencias débiles también
-#   FIX-15: LEVEL_TOUCH_ZONE aumentado a 0.004 para capturar más toques
-# ══════════════════════════════════════════════════════════════════════════════
-
 from __future__ import annotations
 import os, sys, time, asyncio, logging, hashlib, hmac, json
 import warnings, traceback

@@ -666,8 +666,8 @@ function detectReg(cs,adxV){
   else if(adxV>28&&r2>0.65&&!prUp){name='TREND BEAR';cls2='rpill td';key='TRENDING_DOWN';allowL=false;allowS=true;sb=0.8;desc='Tendencia bajista fuerte';}
   else if(adxV>22&&r2>0.50){name=prUp?'TRENDING UP':'TRENDING DOWN';cls2=prUp?'rpill tb':'rpill td';key=prUp?'TRENDING_UP':'TRENDING_DOWN';allowL=prUp;allowS=!prUp;sb=0.4;desc=prUp?'Tendencia alcista':'Tendencia bajista';}
   else if(adxV<18&&volR<0.8){name='RANGING TIGHT';cls2='rpill';key='RANGING';allowL=true;allowS=true;sb=-.3;desc='Consolidación estrecha';}
-  else if(adxV<22){name='RANGING';cls2='rpill';key='RANGING';allowL=true;allowS=true;sb:0;desc='Mercado lateral';}
-  else{name='TRANSITION';cls2='rpill';key:'RANGING';allowL=true;allowS=true;sb:-.2;desc:'Transición';}
+  else if(adxV<22){name='RANGING';cls2='rpill';key='RANGING';allowL=true;allowS=true;sb=0;desc='Mercado lateral';}
+  else{name='TRANSITION';cls2='rpill';key='RANGING';allowL=true;allowS=true;sb=-.2;desc='Transición';}
   REGF[key]={aL:allowL,aS:allowS,sb};
   return{name,cls2,key,adxV,r2,volR,allowL,allowS,sb,desc,bias:prUp?1:-1};
 }
@@ -714,7 +714,9 @@ function checkConf(dir,ind){
   const{ema21,ema55,ema200,ichiD,rsiV,cvdD,macdD,adxV,instFlow,tkR,regKey,volR}=ind;
   const cs=[];
   const emaOk=isL?(ema21>ema55&&ema55>ema200):(ema21<ema55&&ema55<ema200);
-  cs.push({name:'Estructura EMA',state:emaOk&&(isL?ichiD.above:ichiD.below)?'pass':emaOk?'warn':'fail',val:emaOk?(isL?ichiD.above:'':ichiD.below?'EMA+Ichi':'EMA'):'Sin alin.',w:'2x',wt:2});
+  const ichiOk=isL?ichiD.above:ichiD.below;
+  const emaVal=emaOk?(ichiOk?'EMA+Ichi':'Solo EMA'):'Sin alin.';
+  cs.push({name:'Estructura EMA',state:emaOk&&ichiOk?'pass':emaOk?'warn':'fail',val:emaVal,w:'2x',wt:2});
   const cvdBull=cvdD.s5>0.1&&cvdD.s10>0&&cvdD.tkR>0.52&&!cvdD.div,cvdBear=cvdD.s5<-0.1&&cvdD.s10<0&&cvdD.tkR<0.48&&!cvdD.div;
   cs.push({name:'CVD multi-slope',state:(isL?cvdBull:cvdBear)?'pass':cvdD.div?'warn':'fail',val:(isL?cvdBull:cvdBear)?'Slope '+cvdD.s5.toFixed(3)+' ✓':cvdD.div?'Diverg.':'Adverso',w:'3x',wt:3});
   const rsiOk=isL?rsiV>50&&rsiV<75:rsiV<50&&rsiV>25,macdOk=isL?macdD.hist>0:macdD.hist<0;
